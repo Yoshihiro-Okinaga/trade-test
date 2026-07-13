@@ -4,24 +4,47 @@ from pathlib import Path
 
 # === 設定 ===
 REF_LIST = [
-    "US30_Futures",
     "CBOE_Volatility_Index",
-    "COPPER_USD",
+    "DAX_Futures",
+    "EUR_GBP",
+    "EUR_USD",
+    "GBP_USD",
     "GOLD_USD",
-    "SILVER_USD",
-    "PLATINUM_USD",
     "JAPAN255_Futures",
-    "USSPX500_Futures",
-    "UK100_Futures",
     "NQ100_Futures",
+    "OIL_USD",
+    "UK100_Futures",
+    "US30_Futures",
+    "USD_JPY",
+    "USSPX500_Futures",
+    "AUD_JPY",
+    "AUD_USD",
+    "CAD_JPY",
+    "CHF_JPY",
+    "COPPER_USD",
+    "EUR_AUD",
+    "EUR_CHF",
+    "EUR_JPY",
+    "EUR_NZD",
+    "GBP_AUD",
+    "GBP_CHF",
+    "GBP_JPY",
+    "NZD_JPY",
+    "NZD_USD",
+    "PLATINUM_USD",
+    "SILVER_USD",
+    "TRY_JPY",
+    "USD_CAD",
+    "USD_CHF",
+    "ZAR_JPY",
 ]
 
 TARGET_LIST = {
     "US30_Futures": 4.0,
-    "COPPER_USD": 0.02,
+    #"COPPER_USD": 0.02,
     "GOLD_USD": 1.0,
-    "SILVER_USD": 0.1,
-    "PLATINUM_USD": 5.0,
+    #"SILVER_USD": 0.1,
+    #"PLATINUM_USD": 5.0,
     "JAPAN255_Futures": 10,
     "USSPX500_Futures": 2.0,
     "UK100_Futures": 3.0,
@@ -81,6 +104,7 @@ def calc_trade_results(ref_name, target_name):
     TRADE_COST = TARGET_LIST[target_name]
     POS_NAME = ["Long", "Short"]
     POS_RATE = [1, -1]
+    REV_POS_RATE = [-1, 1]
     OPERATORS = [operator.gt, operator.lt]
 
     position = [None, None]
@@ -110,6 +134,8 @@ def calc_trade_results(ref_name, target_name):
                     exit_price = target_close
                     profit = POS_RATE[i] * (exit_price - entry_price[i]) - TRADE_COST
                     profit_pct = profit / entry_price[i] * 100
+                    rev_profit = REV_POS_RATE[i] * (exit_price - entry_price[i]) - TRADE_COST
+                    rev_profit_pct = rev_profit / entry_price[i] * 100
 
                     results.append({
                         "position": position[i],
@@ -120,6 +146,8 @@ def calc_trade_results(ref_name, target_name):
                         "trigger_ref_close": trigger_ref_close[i],
                         "profit": profit,
                         "profit_pct": profit_pct,
+                        "rev_profit": rev_profit,
+                        "rev_profit_pct": rev_profit_pct,
                         "year": actual_entry_date[i].year
                     })
 
@@ -164,6 +192,7 @@ def main():
             return_pct_sum = df_results["profit_pct"].sum()
             average_pct = df_results["profit_pct"].mean()
             win_rate = (df_results["profit"] > 0).mean() * 100
+            rev_average_pct = df_results["rev_profit_pct"].mean()
 
             ranking_results.append({
                 "target": target_name,
@@ -173,6 +202,7 @@ def main():
                 "total_profit": total_profit,
                 "return_pct_sum": return_pct_sum,
                 "average_pct": average_pct,
+                "rev_average_pct": rev_average_pct,
             })
 
     df_ranking = pd.DataFrame(ranking_results)
