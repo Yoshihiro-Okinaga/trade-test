@@ -1,4 +1,5 @@
 import pandas as pd
+import operator
 from pathlib import Path
 
 # === 設定 ===
@@ -15,22 +16,22 @@ REF_LIST = [
     "NQ100_Futures",
 ]
 
-TARGET_LIST = [
-    "US30_Futures",
-    "CBOE_Volatility_Index",
-    "COPPER_USD",
-    "GOLD_USD",
-    "SILVER_USD",
-    "PLATINUM_USD",
-    "JAPAN255_Futures",
-    "USSPX500_Futures",
-    "UK100_Futures",
-    "NQ100_Futures",
-]
+TARGET_LIST = {
+    "US30_Futures": 4.0,
+    "COPPER_USD": 0.02,
+    "GOLD_USD": 1.0,
+    "SILVER_USD": 0.1,
+    "PLATINUM_USD": 5.0,
+    "JAPAN255_Futures": 10,
+    "USSPX500_Futures": 2.0,
+    "UK100_Futures": 3.0,
+    "NQ100_Futures": 0.5,
+}
 
-LAG_DAYS = 3          # 何日前と比較するか
+REF_LAG_DAYS = 3          # 何日前と比較するか
 RISE_PERCENT = 2.0    # 何％上昇したら買うか（例：2%）
 HOLD_DAYS = 2         # 仕掛け日の何取引日後に決済するか
+START_DAYS = 2        # シグナルが出た何日後に仕掛けるか
 DEBUG_OUTPUT_FILE = "trade_debug"
 RANKING_OUTPUT_FILE = "trade_ranking.csv"
 
@@ -52,84 +53,80 @@ def load_data(path):
 
 
 def calc_trade_results(ref_name, target_name):
-    if LAG_DAYS < 1:
-        raise ValueError("LAG_DAYSは1以上を指定してください。")
+    if REF_LAG_DAYS < 1:
+        raise ValueError("REF_LAG_DAYSは1以上を指定してください。")
     if HOLD_DAYS < 1:
         raise ValueError("HOLD_DAYSは1以上を指定してください。")
+    if START_DAYS < 1:
+        raise ValueError("START_DAYSは1以上を指定してください。")
 
     ref = load_data(ref_name)
     target = load_data(target_name)
 
     # === Ref の騰落率（何日前比）を計算 ===
-    ref["ref_shift"] = ref["終値"].shift(LAG_DAYS)
+    ref["ref_shift"] = ref["終値"].shift(REF_LAG_DAYS)
     ref["ref_change_pct"] = (ref["終値"] - ref["ref_shift"]) / ref["ref_shift"] * 100
 
     # === 日付で結合（inner join）===
     merged = pd.merge(ref, target, on="日付", suffixes=("_Ref", "_Target"))
 
     # Refの終値確定後、次の取引日にTargetを仕掛ける
-    merged["ref_change_pct_signal"] = merged["ref_change_pct"].shift(1)
-    merged["ref_trigger_close"] = merged["終値_Ref"].shift(1)
+    merged["ref_change_pct_signal"] = merged["ref_change_pct"].shift(START_DAYS)
+    merged["ref_trigger_close"] = merged["終値_Ref"].shift(START_DAYS)
 
     # === 売買シミュレーション ===
     results = []
-    debug_results = []
 
-    position = None  # None or "LONG"
-    entry_price = None
-    actual_entry_date = None
-    trigger_ref_close = None
-    entry_idx = None
+    TRADE_COST = TARGET_LIST[target_name]
+    POS_NAME = ["Long", "Short"]
+    POS_RATE = [1, -1]
+    OPERATORS = [operator.gt, operator.lt]
+
+    position = [None, None]
+    
+    entry_price = [None, None]
+    actual_entry_date = [None, None]
+    trigger_ref_close = [None, None]
+    entry_idx = [None, None]
 
     for idx, row in merged.iterrows():
         date = row["日付"]
         target_close = row["終値_Target"]
         ref_change = row["ref_change_pct_signal"]
 
-        # --- 買い条件 ---
-        if position is None:
-            if ref_change >= RISE_PERCENT:
-                position = "LONG"
-                entry_price = target_close
-                actual_entry_date = date
-                trigger_ref_close = row["ref_trigger_close"]
-                entry_idx = idx
+        for i in range(2):
+            if position[i] is None:
+                if OPERATORS[i](ref_change, POS_RATE[i] * RISE_PERCENT):
+                    position[i] = POS_NAME[i]
+                    entry_price[i] = target_close
+                    actual_entry_date[i] = date
+                    trigger_ref_close[i] = row["ref_trigger_close"]
+                    entry_idx[i] = idx
 
-        # --- 決済条件（設定した取引日数後の終値で決済）---
-        else:
-            if idx - entry_idx >= HOLD_DAYS:
-                exit_price = target_close
-                profit = exit_price - entry_price
-                profit_pct = profit / entry_price * 100
+            # --- 決済条件（設定した取引日数後の終値で決済）---
+            else:
+                if idx - entry_idx[i] >= HOLD_DAYS:
+                    exit_price = target_close
+                    profit = POS_RATE[i] * (exit_price - entry_price[i]) - TRADE_COST
+                    profit_pct = profit / entry_price[i] * 100
 
-                results.append({
-                    "entry_date": actual_entry_date,
-                    "exit_date": date,
-                    "entry_price": entry_price,
-                    "exit_price": exit_price,
-                    "profit": profit,
-                    "profit_pct": profit_pct,
-                    "year": actual_entry_date.year
-                })
+                    results.append({
+                        "position": position[i],
+                        "entry_date": actual_entry_date[i],
+                        "exit_date": date,
+                        "entry_price": entry_price[i],
+                        "exit_price": exit_price,
+                        "trigger_ref_close": trigger_ref_close[i],
+                        "profit": profit,
+                        "profit_pct": profit_pct,
+                        "year": actual_entry_date[i].year
+                    })
 
-                debug_results.append({
-                    "entry_date": actual_entry_date,
-                    "exit_date": date,
-                    "trigger_ref_close": trigger_ref_close,
-                    "target_entry_price": entry_price,
-                    "target_exit_price": exit_price
-                })
-
-                position = None
-                entry_price = None
-                actual_entry_date = None
-                trigger_ref_close = None
-                entry_idx = None
-
-    # === デバッグ出力 ===
-    #df_debug = pd.DataFrame(debug_results)
-    #output_file = f"{DEBUG_OUTPUT_FILE}_{ref_name}_{target_name}.csv"
-    #df_debug.to_csv(output_file, index=False, encoding="utf-8")
+                    position[i] = None
+                    entry_price[i] = None
+                    actual_entry_date[i] = None
+                    trigger_ref_close[i] = None
+                    entry_idx[i] = None
 
     # === 年ごとに集計 ===
     df_results = pd.DataFrame(results)
@@ -159,28 +156,27 @@ def main():
             df_results = calc_trade_results(ref_name, target_name)
 
             trade_count = len(df_results)
+            if trade_count < 30:
+                continue
 
-            if trade_count == 0:
-                total_profit = 0.0
-                return_pct_sum = 0.0
-                win_rate = 0.0
-            else:
-                total_profit = df_results["profit"].sum()
-                return_pct_sum = df_results["profit_pct"].sum()
-                win_rate = (df_results["profit"] > 0).mean() * 100
+            total_profit = df_results["profit"].sum()
+            return_pct_sum = df_results["profit_pct"].sum()
+            average_pct = df_results["profit_pct"].mean()
+            win_rate = (df_results["profit"] > 0).mean() * 100
 
             ranking_results.append({
-                "ref": ref_name,
                 "target": target_name,
+                "ref": ref_name,
                 "trade_count": trade_count,
                 "win_rate": win_rate,
                 "total_profit": total_profit,
-                "return_pct_sum": return_pct_sum
+                "return_pct_sum": return_pct_sum,
+                "average_pct": average_pct,
             })
 
     df_ranking = pd.DataFrame(ranking_results)
     df_ranking = df_ranking.sort_values(
-        "return_pct_sum",
+        "average_pct",
         ascending=False
     ).reset_index(drop=True)
     df_ranking.insert(0, "rank", df_ranking.index + 1)
