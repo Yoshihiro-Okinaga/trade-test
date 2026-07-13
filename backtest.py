@@ -28,10 +28,11 @@ TARGET_LIST = {
     "NQ100_Futures": 0.5,
 }
 
-REF_LAG_DAYS = 3          # 何日前と比較するか
-RISE_PERCENT = 2.0    # 何％上昇したら買うか（例：2%）
-HOLD_DAYS = 2         # 仕掛け日の何取引日後に決済するか
-START_DAYS = 2        # シグナルが出た何日後に仕掛けるか
+REF_LAG_DAYS = 3        # 何日前と比較するか
+RISE_PERCENT = 2.0      # 何％上昇したら買うか（例：2%）
+HOLD_DAYS = 3           # 仕掛け日の何取引日後に決済するか
+START_DAYS = 2          # シグナルが出た何日後に仕掛けるか
+MIN_TRADE_COUNT = 200   # 取引回数がこの値未満の場合はランキングに含めない
 DEBUG_OUTPUT_FILE = "trade_debug"
 RANKING_OUTPUT_FILE = "trade_ranking.csv"
 
@@ -131,17 +132,17 @@ def calc_trade_results(ref_name, target_name):
     # === 年ごとに集計 ===
     df_results = pd.DataFrame(results)
 
-    if df_results.empty:
-        year_summary = pd.DataFrame(columns=["year", "profit"])
-    else:
-        year_summary = df_results.groupby("year")["profit"].sum().reset_index()
+    #if df_results.empty:
+    #    year_summary = pd.DataFrame(columns=["year", "profit"])
+    #else:
+    #    year_summary = df_results.groupby("year")["profit"].sum().reset_index()
 
-    print(f"\n=== {ref_name} → {target_name} ===")
-    print("=== 年間損益 ===")
-    print(year_summary)
+    #print(f"\n=== {ref_name} → {target_name} ===")
+    #print("=== 年間損益 ===")
+    #print(year_summary)
 
-    print("\n=== 全取引一覧 ===")
-    print(df_results)
+    #print("\n=== 全取引一覧 ===")
+    #print(df_results)
 
     #print(f"\nデバッグ出力: {output_file}")
 
@@ -156,7 +157,7 @@ def main():
             df_results = calc_trade_results(ref_name, target_name)
 
             trade_count = len(df_results)
-            if trade_count < 30:
+            if trade_count < MIN_TRADE_COUNT:
                 continue
 
             total_profit = df_results["profit"].sum()
