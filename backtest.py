@@ -63,9 +63,15 @@ MAX_WORKERS = min(32, os.cpu_count())  # 並列プロセス数
 DEBUG_OUTPUT_FILE = "trade_debug"
 RANKING_OUTPUT_FILE = "trade_ranking.csv"
 
+# ワーカープロセスごとに、読み込み済みのCSVデータを保持する
+DATA_CACHE = {}
+
 
 # === データ読み込み ===
 def load_data(path):
+    if path in DATA_CACHE:
+        return DATA_CACHE[path].copy()
+    
     folder = Path("./stock-data/")   # 探したいフォルダ
 
     files = list(folder.rglob(f"{path}.csv"))
@@ -77,7 +83,10 @@ def load_data(path):
     df = df.dropna()
     df["日付"] = pd.to_datetime(df["日付"])
     df = df.sort_values("日付")
-    return df
+    DATA_CACHE[path] = df
+
+    # 計算中に列を追加するため、キャッシュ本体ではなくコピーを返す
+    return DATA_CACHE[path].copy()
 
 
 def calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_days):
