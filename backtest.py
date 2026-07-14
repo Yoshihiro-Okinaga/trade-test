@@ -54,6 +54,7 @@ TARGET_LIST = {
     "NQ100_Futures": 0.5,
 }
 
+ROUND_DIGITS = 9                            # 小数点以下の桁数（四捨五入）
 REF_LAG_DAYS_LIST = range(3, 8)             # 何日前と比較するか
 RISE_PERCENT = 1.0                          # 何％上昇したら買うか（例：2%）
 HOLD_DAYS_LIST = range(3, 8)                # 仕掛け日の何取引日後に決済するか
@@ -207,8 +208,8 @@ def run_one(task):
         df_results[c] = pd.to_numeric(df_results[c], errors="coerce")
 
     total_profit = df_results["profit"].sum()
-    return_pct_sum = df_results["profit_pct"].sum()
     average_pct = df_results["profit_pct"].mean()
+    std_pct = df_results["profit_pct"].std(ddof=1)
     average_long_pct = df_results["profit_long_pct"].mean()
     average_short_pct = df_results["profit_short_pct"].mean()
     win_rate = (df_results["profit"] > 0).mean() * 100
@@ -224,8 +225,8 @@ def run_one(task):
         "trade_count": trade_count,
         "win_rate": win_rate,
         "total_profit": total_profit,
-        "return_pct_sum": return_pct_sum,
         "average_pct": average_pct,
+        "std_pct": std_pct,
         "average_long_pct": average_long_pct,
         "average_short_pct": average_short_pct,
         "correlation": corr,
@@ -262,10 +263,13 @@ def main():
         ascending=False
     ).reset_index(drop=True)
     df_ranking.insert(0, "rank", df_ranking.index + 1)
-    df_ranking.to_csv(RANKING_OUTPUT_FILE, index=False, encoding="utf-8")
+    df_ranking.to_csv(RANKING_OUTPUT_FILE, index=False, encoding="utf-8", float_format=f"%.{ROUND_DIGITS}f",)
 
     print("\n=== 総合ランキング ===")
-    print(df_ranking)
+    with pd.option_context("display.precision", ROUND_DIGITS,
+                           "display.max_rows", None,
+                           "display.width", None):
+        print(df_ranking)
     print(f"\nランキング出力: {RANKING_OUTPUT_FILE}")
 
     end_time = datetime.datetime.now()
