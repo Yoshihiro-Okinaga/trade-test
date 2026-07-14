@@ -54,12 +54,12 @@ TARGET_LIST = {
     "NQ100_Futures": 0.5,
 }
 
-REF_LAG_DAYS_LIST = range(3, 8)        # 何日前と比較するか
-RISE_PERCENT = 1.0                     # 何％上昇したら買うか（例：2%）
-HOLD_DAYS_LIST = range(3, 8)           # 仕掛け日の何取引日後に決済するか
-START_DAYS_LIST = range(1, 4)          # シグナルが出た何日後に仕掛けるか
-MIN_TRADE_COUNT = 200                  # 取引回数がこの値未満の場合はランキングに含めない
-MAX_WORKERS = min(32, os.cpu_count())  # 並列プロセス数
+REF_LAG_DAYS_LIST = range(3, 8)             # 何日前と比較するか
+RISE_PERCENT = 1.0                          # 何％上昇したら買うか（例：2%）
+HOLD_DAYS_LIST = range(3, 8)                # 仕掛け日の何取引日後に決済するか
+START_DAYS_LIST = range(1, 4)               # シグナルが出た何日後に仕掛けるか
+MIN_TRADE_COUNT = 200                       # 取引回数がこの値未満の場合はランキングに含めない
+MAX_WORKERS = min(32, os.cpu_count() or 1)  # 並列プロセス数
 DEBUG_OUTPUT_FILE = "trade_debug"
 RANKING_OUTPUT_FILE = "trade_ranking.csv"
 
@@ -71,7 +71,7 @@ DATA_CACHE = {}
 def load_data(path):
     if path in DATA_CACHE:
         return DATA_CACHE[path].copy()
-    
+
     folder = Path("./stock-data/")   # 探したいフォルダ
 
     files = list(folder.rglob(f"{path}.csv"))
@@ -80,7 +80,9 @@ def load_data(path):
         raise FileNotFoundError(f"{path} が見つかりませんでした")
 
     df = pd.read_csv(files[0])
-    df = df.dropna()
+    # 他の列（出来高など）の欠損で行が消えると shift() の「何営業日前」がズレるため、
+    # 実際に使う列だけを対象にする
+    df = df.dropna(subset=["日付", "終値"])
     df["日付"] = pd.to_datetime(df["日付"])
     df = df.sort_values("日付")
     DATA_CACHE[path] = df
@@ -198,6 +200,11 @@ def run_one(task):
     trade_count = len(df_results)
     if trade_count < MIN_TRADE_COUNT:
         return None
+
+    # long / short の片方が一度も成立しない場合、列が object dtype になり
+    # .mean() が TypeError を投げるため、明示的に数値化しておく
+    for c in ["profit_long", "profit_long_pct", "profit_short", "profit_short_pct"]:
+        df_results[c] = pd.to_numeric(df_results[c], errors="coerce")
 
     total_profit = df_results["profit"].sum()
     return_pct_sum = df_results["profit_pct"].sum()
