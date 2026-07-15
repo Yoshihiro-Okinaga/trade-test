@@ -55,14 +55,15 @@ TARGET_LIST = {
 }
 
 ROUND_DIGITS = 9                            # 小数点以下の桁数（四捨五入）
-REF_LAG_DAYS_LIST = range(3, 8)             # 何日前と比較するか
+REF_LAG_DAYS_LIST = range(1, 2)             # 何日前と比較するか
 RISE_PERCENT = 1.0                          # 何％上昇したら買うか（例：2%）
-HOLD_DAYS_LIST = range(3, 8)                # 仕掛け日の何取引日後に決済するか
-START_DAYS_LIST = range(1, 4)               # シグナルが出た何日後に仕掛けるか
+HOLD_DAYS_LIST = range(1, 2)                # 仕掛け日の何取引日後に決済するか
+START_DAYS_LIST = range(1, 2)               # シグナルが出た何日後に仕掛けるか
 MIN_TRADE_COUNT = 200                       # 取引回数がこの値未満の場合はランキングに含めない
 MAX_WORKERS = min(32, os.cpu_count() or 1)  # 並列プロセス数
+COUNTER_TRADE = True
 DEBUG_OUTPUT_FILE = "trade_debug"
-RANKING_OUTPUT_FILE = "trade_ranking.csv"
+RANKING_OUTPUT_FILE = "trade_ranking_counter.csv" if COUNTER_TRADE else "trade_ranking.csv"
 
 # ワーカープロセスごとに、読み込み済みのCSVデータを保持する
 DATA_CACHE = {}
@@ -73,7 +74,7 @@ def load_data(path):
     if path in DATA_CACHE:
         return DATA_CACHE[path].copy()
 
-    folder = Path("./stock-data/")   # 探したいフォルダ
+    folder = Path("./stock-data/FXCFD/")   # 探したいフォルダ
 
     files = list(folder.rglob(f"{path}.csv"))
 
@@ -104,15 +105,16 @@ def calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_day
     target = load_data(target_name)
 
     # === Ref の騰落率（何日前比）を計算 ===
-    ref["ref_shift"] = ref["終値"].shift(ref_lag_days)
-    ref["ref_change_pct"] = (ref["終値"] - ref["ref_shift"]) / ref["ref_shift"] * 100
+    ref["ref_base"] = ref["終値"]
+    ref["ref_shift"] = ref["ref_base"].shift(ref_lag_days)
+    ref["ref_change_pct"] = (ref["ref_base"] - ref["ref_shift"]) / ref["ref_shift"] * 100
     ref["ref_change_pct_signal"] = ref["ref_change_pct"].shift(start_days)
-    ref["ref_trigger_close"] = ref["終値"].shift(start_days)
 
-    target["target_exit"] = target["終値"].shift(-hold_days)
+    target["target_base"] = target["終値"]
+    target["target_exit"] = target["target_base"].shift(-hold_days)
     target["exit_date"] = target["日付"].shift(-hold_days)
-    target["target_change"] = target["target_exit"] - target["終値"]
-    target["target_change_pct"] = target["target_change"] / target["終値"] * 100
+    target["target_change"] = target["target_exit"] - target["target_base"]
+    target["target_change_pct"] = target["target_change"] / target["target_base"] * 100
 
     # === 日付で結合（inner join）===
     merged = pd.merge(ref, target, on="日付", suffixes=("_Ref", "_Target"))
@@ -127,29 +129,30 @@ def calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_day
     POS_NAME = ["long", "short"]
     POS_RATE = [1, -1]
     OPERATORS = [operator.gt, operator.lt]
+    OPERATORS_COUNTER = [operator.lt, operator.gt]
 
     # iterrows は行ごとに Series を生成して遅いため、列を先に取り出しておく
     dates = merged["日付"].to_list()                            # Timestamp のまま保持
     exit_dates = merged["exit_date"].to_list()                    # Timestamp のまま保持
-    target_closes = merged["終値_Target"].to_numpy()
-    ref_change_pcts = merged["ref_change_pct_signal"].to_numpy()
-    ref_triggers = merged["ref_trigger_close"].to_numpy()
+    target_closes = merged["target_base"].to_numpy()
+    ref_change_pct_signals = merged["ref_change_pct_signal"].to_numpy()
     target_shifts = merged["target_exit"].to_numpy()
     target_changes = merged["target_change"].to_numpy()
 
     for idx in range(len(merged)):
         date = dates[idx]
         target_close = target_closes[idx]
-        ref_change_pct = ref_change_pcts[idx]
+        ref_change_pct_signal = ref_change_pct_signals[idx]
         profit_ls = [None, None]
         profit_ls_pct = [None, None]
 
         for i in range(2):
-            if not OPERATORS[i](ref_change_pct, POS_RATE[i] * RISE_PERCENT):
+            if COUNTER_TRADE and not OPERATORS_COUNTER[i](ref_change_pct_signal, -POS_RATE[i] * RISE_PERCENT):
+                continue
+            if not COUNTER_TRADE and not OPERATORS[i](ref_change_pct_signal, POS_RATE[i] * RISE_PERCENT):
                 continue
 
             entry_price = target_close
-            trigger_ref_close = ref_triggers[idx]
             exit_price = target_shifts[idx]
 
             if pd.isna(exit_price):
@@ -167,7 +170,6 @@ def calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_day
                 "exit_date": exit_date,
                 "entry_price": entry_price,
                 "exit_price": exit_price,
-                "trigger_ref_close": trigger_ref_close,
                 "profit": profit,
                 "profit_pct": profit_pct,
                 "profit_long": profit_ls[0],
@@ -207,6 +209,10 @@ def run_one(task):
     for c in ["profit_long", "profit_long_pct", "profit_short", "profit_short_pct"]:
         df_results[c] = pd.to_numeric(df_results[c], errors="coerce")
 
+
+    long_count = int((df_results["position"] == "long").sum())
+    short_count = int((df_results["position"] == "short").sum())
+
     total_profit = df_results["profit"].sum()
     average_pct = df_results["profit_pct"].mean()
     std_pct = df_results["profit_pct"].std(ddof=1)
@@ -214,6 +220,9 @@ def run_one(task):
     average_short_pct = df_results["profit_short_pct"].mean()
     win_rate = (df_results["profit"] > 0).mean() * 100
     year_summary = df_results.attrs["year_summary"]
+    year_profits = year_summary["profit"]
+    positive_year_ratio = (year_profits > 0).mean() * 100
+    worst_year_profit = year_profits.min()     
     corr = df_results.attrs["correlation"]
 
     return {
@@ -223,8 +232,12 @@ def run_one(task):
         "hold_days": hold_days,
         "start_days": start_days,
         "trade_count": trade_count,
+        "long_count": long_count,
+        "short_count": short_count,
         "win_rate": win_rate,
         "total_profit": total_profit,
+        "positive_year_ratio": positive_year_ratio,
+        "worst_year_profit": worst_year_profit,
         "average_pct": average_pct,
         "std_pct": std_pct,
         "average_long_pct": average_long_pct,
@@ -259,7 +272,7 @@ def main():
 
     df_ranking = pd.DataFrame(ranking_results)
     df_ranking = df_ranking.sort_values(
-        "average_pct",
+        "average_short_pct",
         ascending=False
     ).reset_index(drop=True)
     df_ranking.insert(0, "rank", df_ranking.index + 1)
