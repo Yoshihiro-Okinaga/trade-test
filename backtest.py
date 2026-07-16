@@ -54,14 +54,23 @@ TARGET_LIST = {
     "NQ100_Futures": 0.5,
 }
 
+base_path = Path("./stock-data/FXCFD")
+csv_files = list(base_path.rglob("*.csv"))
+REF_LIST = [f.stem for f in csv_files]  # サブフォルダを含めて CSV を検索
+TARGET_LIST = REF_LIST.copy()
+
+SIGNAL_TYPE = "macd" # change_pct, sma_dev, bb, macd
+TRADE_CODE_TYPE = "same" # all, same, not_same
 ROUND_DIGITS = 9                            # 小数点以下の桁数（四捨五入）
-REF_LAG_DAYS_LIST = range(1, 2)             # 何日前と比較するか
+REF_LAG_DAYS_LIST = range(15, 16)           # 何日前と比較するか
 RISE_PERCENT = 1.0                          # 何％上昇したら買うか（例：2%）
-HOLD_DAYS_LIST = range(1, 2)                # 仕掛け日の何取引日後に決済するか
+HOLD_DAYS_LIST = range(15, 16)              # 仕掛け日の何取引日後に決済するか
 START_DAYS_LIST = range(1, 2)               # シグナルが出た何日後に仕掛けるか
-MIN_TRADE_COUNT = 200                       # 取引回数がこの値未満の場合はランキングに含めない
+SMA_PERIOD_LIST = range(10, 11)               # SMAの期間（1日移動平均は終値そのもの）
+MIN_TRADE_COUNT = 1                       # 取引回数がこの値未満の場合はランキングに含めない
 MAX_WORKERS = min(32, os.cpu_count() or 1)  # 並列プロセス数
-COUNTER_TRADE = False
+COUNTER_TRADE = True
+CALC_ONLY_CORRELATION = False
 DEBUG_OUTPUT_FILE = "trade_debug"
 RANKING_OUTPUT_FILE = "trade_ranking_counter.csv" if COUNTER_TRADE else "trade_ranking.csv"
 
@@ -93,7 +102,7 @@ def load_data(path):
     return DATA_CACHE[path].copy()
 
 
-def calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_days):
+def calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_days, sma_period):
     if ref_lag_days < 1:
         raise ValueError("ref_lag_daysは1以上を指定してください。")
     if hold_days < 1:
@@ -101,14 +110,35 @@ def calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_day
     if start_days < 1:
         raise ValueError("start_daysは1以上を指定してください。")
 
+    if TRADE_CODE_TYPE == "same" and ref_name != target_name:
+        return None
+    if TRADE_CODE_TYPE == "not_same" and ref_name == target_name:
+        return None
+
     ref = load_data(ref_name)
     target = load_data(target_name)
 
     # === Ref の騰落率（何日前比）を計算 ===
     ref["ref_base"] = ref["終値"]
-    ref["ref_shift"] = ref["ref_base"].shift(ref_lag_days)
-    ref["ref_change_pct"] = (ref["ref_base"] - ref["ref_shift"]) / ref["ref_shift"] * 100
-    ref["ref_change_pct_signal"] = ref["ref_change_pct"].shift(start_days)
+
+    if SIGNAL_TYPE == "change_pct":
+        ref["ref_shift"] = ref["ref_base"].shift(ref_lag_days)
+        ref["ref_change_pct"] = (ref["ref_base"] - ref["ref_shift"]) / ref["ref_shift"] * 100
+        ref["ref_change_pct_signal"] = ref["ref_change_pct"].shift(start_days)
+    elif SIGNAL_TYPE == "sma_dev":
+        sma = ref["ref_base"].rolling(sma_period).mean()
+        ref["ref_change_pct"] = (ref["ref_base"] - sma) / sma * 100
+        ref["ref_change_pct_signal"] = ref["ref_change_pct"].shift(start_days)
+    elif SIGNAL_TYPE == "bb":
+        sma = ref["ref_base"].rolling(sma_period).mean()
+        std = ref["ref_base"].rolling(sma_period).std()
+        ref["ref_change_pct"] = (ref["ref_base"] - sma) / std   # 何σ乖離しているか（z-score）
+        ref["ref_change_pct_signal"] = ref["ref_change_pct"].shift(start_days)
+    elif SIGNAL_TYPE == "macd":
+        ema_fast = ref["ref_base"].ewm(span=12, adjust=False).mean()
+        ema_slow = ref["ref_base"].ewm(span=26, adjust=False).mean()
+        ref["ref_change_pct"] = ema_fast - ema_slow             # MACD本体
+        ref["ref_change_pct_signal"] = ref["ref_change_pct"].shift(start_days)
 
     target["target_base"] = target["終値"]
     target["target_exit"] = target["target_base"].shift(-hold_days)
@@ -125,7 +155,7 @@ def calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_day
     # === 売買シミュレーション ===
     results = []
 
-    TRADE_COST = TARGET_LIST[target_name]
+    TRADE_COST = 0.0#TARGET_LIST[target_name]
     POS_NAME = ["long", "short"]
     POS_RATE = [1, -1]
     OPERATORS = [operator.gt, operator.lt]
@@ -196,9 +226,11 @@ def calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_day
 
 def run_one(task):
     """ワーカープロセスで実行される単位。集計まで済ませて軽い dict だけ返す。"""
-    ref_name, target_name, ref_lag_days, hold_days, start_days = task
+    ref_name, target_name, ref_lag_days, hold_days, start_days, sma_period = task
 
-    df_results = calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_days)
+    df_results = calc_trade_results(ref_name, target_name, ref_lag_days, hold_days, start_days, sma_period)
+    if df_results is None:
+        return None
 
     trade_count = len(df_results)
     if trade_count < MIN_TRADE_COUNT:
@@ -254,12 +286,13 @@ def main():
     print(f"ワーカー数: {MAX_WORKERS}")
 
     tasks = [
-        (ref_name, target_name, ref_lag_days, hold_days, start_days)
+        (ref_name, target_name, ref_lag_days, hold_days, start_days, sma_period)
         for ref_name in REF_LIST
         for target_name in TARGET_LIST
         for ref_lag_days in REF_LAG_DAYS_LIST
         for hold_days in HOLD_DAYS_LIST
         for start_days in START_DAYS_LIST
+        for sma_period in SMA_PERIOD_LIST
     ]
 
     ranking_results = []
@@ -274,7 +307,7 @@ def main():
 
     df_ranking = pd.DataFrame(ranking_results)
     df_ranking = df_ranking.sort_values(
-        "corr_t",
+        "correlation",
         key=abs,
         ascending=False
     ).reset_index(drop=True)
