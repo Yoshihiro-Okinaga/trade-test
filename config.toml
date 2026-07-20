@@ -108,7 +108,7 @@ sma_period_list = [
 ]
 
 trade_code_type = "all"
-min_trade_count = 10
+min_trade_count = 100
 counter_trade = false
 calc_only_correlation = false
 use_process_pool = true

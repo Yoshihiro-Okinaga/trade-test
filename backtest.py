@@ -65,9 +65,9 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
         raise ValueError("start_daysは1以上を指定してください。")
 
     if config.trade_code_type == "same" and ref_name != target_name:
-        return None, None
+        return None, None, None
     if config.trade_code_type == "not_same" and ref_name == target_name:
-        return None, None
+        return None, None, None
 
     ref = load_data(ref_name)
     target = load_data(target_name)
@@ -146,6 +146,8 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
     stoch_k = 100 * (ref["ref_base"] - low_min) / (high_max - low_min)
     ref["ref_signal_stoch"] = stoch_k.shift(start_days)
 
+    other_message = ""
+
     if signal_type != "Test":
         ref["ref_signal"] = ref[f"ref_signal_{signal_type}"]
     else:
@@ -165,6 +167,7 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
                 if abs(corr_tmp) > abs(corr_abs):
                     corr_abs = corr_tmp
                     ref["ref_signal"] = ref["tmp_signal"]
+                    other_message = f"（Test: {signal_type_1} * {signal_type_2} * {signal}）"
                 del ref["tmp_product"]
                 del ref["tmp_signal"]
 
@@ -173,7 +176,7 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
 
     corr = merged["target_change_pct"].corr(merged["ref_signal"])
     if config.calc_only_correlation is True:
-        return None, corr
+        return None, corr, other_message
 
     # Refの終値確定後、次の取引日にTargetを仕掛ける
 
@@ -245,7 +248,7 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
 
     df_results.attrs["year_summary"] = year_summary
 
-    return df_results, corr
+    return df_results, corr, other_message
 
 
 def run_one(config, task):
@@ -253,7 +256,7 @@ def run_one(config, task):
     ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period = task
 
     result_base = {}
-    df_results, corr = calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period)
+    df_results, corr, other_message = calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period)
     if corr is not None:
         result_base = {
             "target": target_name,
@@ -263,6 +266,7 @@ def run_one(config, task):
             "hold_days": hold_days,
             "start_days": start_days,
             "correlation": corr,
+            "other_message": other_message,
         }
         if config.calc_only_correlation is True:
             return result_base
