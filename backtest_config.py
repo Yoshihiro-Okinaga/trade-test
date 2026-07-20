@@ -17,3 +17,14 @@ class BackTestConfig:
         self.counter_trade: bool = config_data.get("counter_trade", False)
         self.calc_only_correlation: bool = config_data.get("calc_only_correlation", False)
         self.use_process_pool: bool = config_data.get("use_process_pool", True)
+        # 指標ごとの売買判定の閾値（幅）。center は 0 固定で、
+        # |signal| がこの width を超えたら売買シグナルとする。
+        # 指標ごとに値のスケールが違うため、指標名 -> width の辞書で持つ。
+        # 未指定の指標は default_threshold_width を使う（従来の RISE_PERCENT 相当）。
+        self.threshold_width: dict = config_data.get("threshold_width", {})
+        self.default_threshold_width: float = config_data.get("default_threshold_width", 1.0)
+
+    def width_of(self, signal_type: str) -> float:
+        """指標に対応する閾値の幅を返す。未設定ならデフォルト。"""
+        return self.threshold_width.get(signal_type, self.default_threshold_width)
+

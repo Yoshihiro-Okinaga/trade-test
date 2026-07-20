@@ -26,8 +26,6 @@ class SignalType(StrEnum):
 #csv_files = list(base_path.rglob("*.csv"))
 #REF_LIST = [f.stem for f in csv_files]  # サブフォルダを含めて CSV を検索
 
-RISE_PERCENT = 1.0                          # 何％上昇したら買うか（例：2%）
-
 # ワーカープロセスごとに、読み込み済みのCSVデータを保持する
 DATA_CACHE = {}
 
@@ -198,6 +196,9 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
     target_shifts = merged["target_exit"].to_numpy()
     target_changes = merged["target_change"].to_numpy()
 
+    # 指標ごとの閾値（幅）。center は 0 固定。
+    threshold_width = config.width_of(signal_type)
+
     for idx in range(len(merged)):
         date = dates[idx]
         target_close = target_closes[idx]
@@ -206,9 +207,9 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
         profit_ls_pct = [None, None]
 
         for i in range(2):
-            if config.counter_trade and not OPERATORS_COUNTER[i](ref_signal, -POS_RATE[i] * RISE_PERCENT):
+            if config.counter_trade and not OPERATORS_COUNTER[i](ref_signal, -POS_RATE[i] * threshold_width):
                 continue
-            if not config.counter_trade and not OPERATORS[i](ref_signal, POS_RATE[i] * RISE_PERCENT):
+            if not config.counter_trade and not OPERATORS[i](ref_signal, POS_RATE[i] * threshold_width):
                 continue
 
             entry_price = target_close

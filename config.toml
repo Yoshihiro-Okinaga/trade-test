@@ -112,3 +112,12 @@ min_trade_count = 100
 counter_trade = false
 calc_only_correlation = false
 use_process_pool = true
+
+# 売買判定の閾値（幅）。|signal| がこの値を超えたら売買する。
+# 指標ごとに値のスケールが違うので、指標ごとに設定する。
+# ここに書かない指標は default_threshold_width が使われる。
+default_threshold_width = 1.0
+
+[threshold_width]
+bb = 2.0
+
