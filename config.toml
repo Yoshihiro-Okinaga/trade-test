@@ -1,0 +1,114 @@
+ref_list = [
+    "CBOE_Volatility_Index",
+    "DAX_Futures",
+    "EUR_GBP",
+    "EUR_USD",
+    "GBP_USD",
+    "GOLD_USD",
+    "JAPAN255_Futures",
+    "NQ100_Futures",
+    "OIL_USD",
+    "UK100_Futures",
+    "US30_Futures",
+    "USD_JPY",
+    "USSPX500_Futures",
+    "AUD_JPY",
+    "AUD_USD",
+    "CAD_JPY",
+    "CHF_JPY",
+    "COPPER_USD",
+    "EUR_AUD",
+    "EUR_CHF",
+    "EUR_JPY",
+    "EUR_NZD",
+    "GBP_AUD",
+    "GBP_CHF",
+    "GBP_JPY",
+    "NZD_JPY",
+    "NZD_USD",
+    "PLATINUM_USD",
+    "SILVER_USD",
+    "TRY_JPY",
+    "USD_CAD",
+    "USD_CHF",
+    "ZAR_JPY",
+]
+
+target_list = [
+    "CBOE_Volatility_Index",
+    "DAX_Futures",
+    "EUR_GBP",
+    "EUR_USD",
+    "GBP_USD",
+    "GOLD_USD",
+    "JAPAN255_Futures",
+    "NQ100_Futures",
+    "OIL_USD",
+    "UK100_Futures",
+    "US30_Futures",
+    "USD_JPY",
+    "USSPX500_Futures",
+    "AUD_JPY",
+    "AUD_USD",
+    "CAD_JPY",
+    "CHF_JPY",
+    "COPPER_USD",
+    "EUR_AUD",
+    "EUR_CHF",
+    "EUR_JPY",
+    "EUR_NZD",
+    "GBP_AUD",
+    "GBP_CHF",
+    "GBP_JPY",
+    "NZD_JPY",
+    "NZD_USD",
+    "PLATINUM_USD",
+    "SILVER_USD",
+    "TRY_JPY",
+    "USD_CAD",
+    "USD_CHF",
+    "ZAR_JPY",
+    #"US30_Futures": 4.0,
+    #"COPPER_USD": 0.02,
+    #"GOLD_USD": 1.0,
+    #"SILVER_USD": 0.1,
+    #"PLATINUM_USD": 5.0,
+    #"JAPAN255_Futures": 10,
+    #"USSPX500_Futures": 2.0,
+    #"UK100_Futures": 3.0,
+    #"NQ100_Futures": 0.5,
+]
+
+signal_type_list = [
+    "change",
+    "sma",
+    "bb",
+    "macd",
+    "rsi",
+    "di",
+    "adx",
+    "stoch",
+    "Test"
+]
+
+ref_lag_days_list = [
+    15,
+]
+
+hold_days_list = [
+    15,
+]
+
+start_days_list = [
+    1,
+]
+
+sma_period_list = [
+    10,
+]
+
+trade_code_type = "all"
+min_trade_count = 10
+counter_trade = false
+calc_only_correlation = false
+use_process_pool = true

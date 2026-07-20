@@ -1,61 +1,17 @@
-import pandas as pd
+import sys
 import operator
 import os
 import datetime
+import tomllib
+import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from enum import StrEnum
 from itertools import combinations
 
+import backtest_config
+
 # === 設定 ===
-REF_LIST = [
-    "CBOE_Volatility_Index",
-    "DAX_Futures",
-    "EUR_GBP",
-    "EUR_USD",
-    "GBP_USD",
-    "GOLD_USD",
-    "JAPAN255_Futures",
-    "NQ100_Futures",
-    "OIL_USD",
-    "UK100_Futures",
-    "US30_Futures",
-    "USD_JPY",
-    "USSPX500_Futures",
-    "AUD_JPY",
-    "AUD_USD",
-    "CAD_JPY",
-    "CHF_JPY",
-    "COPPER_USD",
-    "EUR_AUD",
-    "EUR_CHF",
-    "EUR_JPY",
-    "EUR_NZD",
-    "GBP_AUD",
-    "GBP_CHF",
-    "GBP_JPY",
-    "NZD_JPY",
-    "NZD_USD",
-    "PLATINUM_USD",
-    "SILVER_USD",
-    "TRY_JPY",
-    "USD_CAD",
-    "USD_CHF",
-    "ZAR_JPY",
-]
-
-TARGET_LIST = {
-    "US30_Futures": 4.0,
-    #"COPPER_USD": 0.02,
-    "GOLD_USD": 1.0,
-    #"SILVER_USD": 0.1,
-    #"PLATINUM_USD": 5.0,
-    "JAPAN255_Futures": 10,
-    "USSPX500_Futures": 2.0,
-    "UK100_Futures": 3.0,
-    "NQ100_Futures": 0.5,
-}
-
 class SignalType(StrEnum):
     CHANGE = "change"
     SMA = "sma"
@@ -66,27 +22,11 @@ class SignalType(StrEnum):
     ADX = "adx"
     STOCH = "stoch"
 
-base_path = Path("./stock-data/Manual/FXCFD")
-csv_files = list(base_path.rglob("*.csv"))
-REF_LIST = [f.stem for f in csv_files]  # サブフォルダを含めて CSV を検索
-TARGET_LIST = REF_LIST.copy()
+#base_path = Path("./stock-data/Manual/FXCFD")
+#csv_files = list(base_path.rglob("*.csv"))
+#REF_LIST = [f.stem for f in csv_files]  # サブフォルダを含めて CSV を検索
 
-
-SIGNAL_TYPE_LIST = ["change", "sma", "bb", "macd", "rsi", "di", "adx", "stoch", "Test"]
-TRADE_CODE_TYPE = "all" # all, same, not_same
-ROUND_DIGITS = 9                            # 小数点以下の桁数（四捨五入）
-REF_LAG_DAYS_LIST = range(15, 16)           # 何日前と比較するか
 RISE_PERCENT = 1.0                          # 何％上昇したら買うか（例：2%）
-HOLD_DAYS_LIST = range(15, 16)              # 仕掛け日の何取引日後に決済するか
-START_DAYS_LIST = range(1, 2)               # シグナルが出た何日後に仕掛けるか
-SMA_PERIOD_LIST = range(10, 11)             # SMAの期間（1日移動平均は終値そのもの）
-MIN_TRADE_COUNT = 10                        # 取引回数がこの値未満の場合はランキングに含めない
-MAX_WORKERS = min(32, os.cpu_count() or 1)  # 並列プロセス数
-COUNTER_TRADE = False
-CALC_ONLY_CORRELATION = False
-USE_PROCESS_POOL = True # Trueにすると、CPUコア数に応じて並列処理される。Falseにするとシングルスレッドになるが、デバッグがやりやすくなる
-DEBUG_OUTPUT_FILE = "trade_debug"
-RANKING_OUTPUT_FILE = "trade_ranking_counter.csv" if COUNTER_TRADE else "trade_ranking.csv"
 
 # ワーカープロセスごとに、読み込み済みのCSVデータを保持する
 DATA_CACHE = {}
@@ -116,7 +56,7 @@ def load_data(path):
     return DATA_CACHE[path].copy()
 
 
-def calc_trade_results(ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period):
+def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period):
     if ref_lag_days < 1:
         raise ValueError("ref_lag_daysは1以上を指定してください。")
     if hold_days < 1:
@@ -124,9 +64,9 @@ def calc_trade_results(ref_name, target_name, signal_type, ref_lag_days, hold_da
     if start_days < 1:
         raise ValueError("start_daysは1以上を指定してください。")
 
-    if TRADE_CODE_TYPE == "same" and ref_name != target_name:
+    if config.trade_code_type == "same" and ref_name != target_name:
         return None, None
-    if TRADE_CODE_TYPE == "not_same" and ref_name == target_name:
+    if config.trade_code_type == "not_same" and ref_name == target_name:
         return None, None
 
     ref = load_data(ref_name)
@@ -217,7 +157,7 @@ def calc_trade_results(ref_name, target_name, signal_type, ref_lag_days, hold_da
             for signal in (-1, 1):
                 ref["tmp_product"] = signal_1 * signal_2
                 ref["tmp_signal"] = ref["tmp_product"].where(ref["tmp_product"] * signal > 0)
-                if ref["tmp_signal"].count() < MIN_TRADE_COUNT:
+                if ref["tmp_signal"].count() < config.min_trade_count:
                     continue
 
                 merged_tmp = pd.merge(ref, target, on="日付", suffixes=("_Ref", "_Target"))
@@ -232,7 +172,7 @@ def calc_trade_results(ref_name, target_name, signal_type, ref_lag_days, hold_da
     merged = pd.merge(ref, target, on="日付", suffixes=("_Ref", "_Target"))
 
     corr = merged["target_change_pct"].corr(merged["ref_signal"])
-    if CALC_ONLY_CORRELATION is True:
+    if config.calc_only_correlation is True:
         return None, corr
 
     # Refの終値確定後、次の取引日にTargetを仕掛ける
@@ -263,9 +203,9 @@ def calc_trade_results(ref_name, target_name, signal_type, ref_lag_days, hold_da
         profit_ls_pct = [None, None]
 
         for i in range(2):
-            if COUNTER_TRADE and not OPERATORS_COUNTER[i](ref_signal, -POS_RATE[i] * RISE_PERCENT):
+            if config.counter_trade and not OPERATORS_COUNTER[i](ref_signal, -POS_RATE[i] * RISE_PERCENT):
                 continue
-            if not COUNTER_TRADE and not OPERATORS[i](ref_signal, POS_RATE[i] * RISE_PERCENT):
+            if not config.counter_trade and not OPERATORS[i](ref_signal, POS_RATE[i] * RISE_PERCENT):
                 continue
 
             entry_price = target_close
@@ -308,12 +248,12 @@ def calc_trade_results(ref_name, target_name, signal_type, ref_lag_days, hold_da
     return df_results, corr
 
 
-def run_one(task):
+def run_one(config, task):
     """ワーカープロセスで実行される単位。集計まで済ませて軽い dict だけ返す。"""
     ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period = task
 
     result_base = {}
-    df_results, corr = calc_trade_results(ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period)
+    df_results, corr = calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period)
     if corr is not None:
         result_base = {
             "target": target_name,
@@ -324,14 +264,14 @@ def run_one(task):
             "start_days": start_days,
             "correlation": corr,
         }
-        if CALC_ONLY_CORRELATION is True:
+        if config.calc_only_correlation is True:
             return result_base
     
     if df_results is None or df_results.empty:
         return None
 
     trade_count = len(df_results)
-    if trade_count < MIN_TRADE_COUNT:
+    if trade_count < config.min_trade_count:
         return None
 
     # long / short の片方が一度も成立しない場合、列が object dtype になり
@@ -370,66 +310,3 @@ def run_one(task):
     }
 
     return result_base | result_sub
-
-
-def main():
-    start_time = datetime.datetime.now()
-    print(f"ワーカー数: {MAX_WORKERS}")
-
-    tasks = [
-        (ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period)
-        for ref_name in REF_LIST
-        for target_name in TARGET_LIST
-        for signal_type in SIGNAL_TYPE_LIST
-        for ref_lag_days in REF_LAG_DAYS_LIST
-        for hold_days in HOLD_DAYS_LIST
-        for start_days in START_DAYS_LIST
-        for sma_period in SMA_PERIOD_LIST
-    ]
-
-    ranking_results = []
-
-    if USE_PROCESS_POOL:
-        with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = [executor.submit(run_one, task) for task in tasks]
-
-            for future in as_completed(futures):
-                result = future.result()
-                if result is not None:
-                    ranking_results.append(result)
-    else:
-        for task in tasks:
-            result = run_one(task)
-            if result is not None:
-                ranking_results.append(result)
-
-    df_ranking = pd.DataFrame(ranking_results)
-    # correlation の絶対値で降順に並べる。ただし絶対値が同値の行の順序が
-    # 実行ごとにブレると、出力の diff 比較（テストのゴールデン照合）が壊れる。
-    # そこで target/ref/signal_type をタイブレークに使い、安定ソートで
-    # 行順を完全に決定的にする。
-    df_ranking["_abs_corr"] = df_ranking["correlation"].abs()
-    df_ranking = df_ranking.sort_values(
-        ["_abs_corr", "target", "ref", "signal_type"],
-        ascending=[False, True, True, True],
-        kind="mergesort",
-    ).drop(columns="_abs_corr").reset_index(drop=True)
-    df_ranking.insert(0, "rank", df_ranking.index + 1)
-    df_ranking.to_csv(RANKING_OUTPUT_FILE, index=False, encoding="utf-8", float_format=f"%.{ROUND_DIGITS}f",)
-
-    print("\n=== 総合ランキング ===")
-    with pd.option_context("display.precision", ROUND_DIGITS,
-                           "display.max_rows", None,
-                           "display.width", None):
-        print(df_ranking)
-    print(f"\nランキング出力: {RANKING_OUTPUT_FILE}")
-
-    end_time = datetime.datetime.now()
-    duration = end_time - start_time
-    print(f"実験開始時刻: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"実験終了時刻: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"総実行時間: {duration}")
-
-
-if __name__ == "__main__":
-    main()
