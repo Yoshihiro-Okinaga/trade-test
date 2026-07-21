@@ -34,61 +34,16 @@ ref_list = [
     "ZAR_JPY",
 ]
 
-target_list = [
-    "CBOE_Volatility_Index",
-    "DAX_Futures",
-    "EUR_GBP",
-    "EUR_USD",
-    "GBP_USD",
-    "GOLD_USD",
-    "JAPAN255_Futures",
-    "NQ100_Futures",
-    "OIL_USD",
-    "UK100_Futures",
-    "US30_Futures",
-    "USD_JPY",
-    "USSPX500_Futures",
-    "AUD_JPY",
-    "AUD_USD",
-    "CAD_JPY",
-    "CHF_JPY",
-    "COPPER_USD",
-    "EUR_AUD",
-    "EUR_CHF",
-    "EUR_JPY",
-    "EUR_NZD",
-    "GBP_AUD",
-    "GBP_CHF",
-    "GBP_JPY",
-    "NZD_JPY",
-    "NZD_USD",
-    "PLATINUM_USD",
-    "SILVER_USD",
-    "TRY_JPY",
-    "USD_CAD",
-    "USD_CHF",
-    "ZAR_JPY",
-    #"US30_Futures": 4.0,
-    #"COPPER_USD": 0.02,
-    #"GOLD_USD": 1.0,
-    #"SILVER_USD": 0.1,
-    #"PLATINUM_USD": 5.0,
-    #"JAPAN255_Futures": 10,
-    #"USSPX500_Futures": 2.0,
-    #"UK100_Futures": 3.0,
-    #"NQ100_Futures": 0.5,
-]
-
 signal_type_list = [
-    #"change",
-    #"sma",
-    #"bb",
-    #"macd",
-    #"rsi",
-    #"di",
-    #"adx",
+    "change",
+    "sma",
+    "bb",
+    "macd",
+    "rsi",
+    "di",
+    "adx",
     "stoch",
-    #"Test"
+    "Test"
 ]
 
 ref_lag_days_list = [
@@ -123,9 +78,49 @@ bb = 2.0
 rsi = 20.0
 stoch = 30.0
 
-# 指標の中心値。rsi は 0〜100 の範囲で中心 50（30/70 で判定）。
+# 指標の中心値。rsi/stoch は 0〜100 の範囲で中心 50。
+# rsi は 30/70、stoch は 20/80 で判定する。
 # ここに書かない指標は中心 0 とみなす（bb, change, sma, macd, di）。
 [threshold_center]
 rsi = 50.0
 stoch = 50.0
 
+
+# 売買コスト（値幅）。銘柄ごとに、仕掛け時に1回だけ引かれる片道コスト。
+# 元コードで判明している値のみ設定済み。残りは 0.0 なので、
+# 実際のブローカーのスプレッドが分かり次第、各自で埋めること。
+# ここが 0.0 のままだと、その銘柄はコストなしで評価される点に注意。
+[target_list]
+CBOE_Volatility_Index = 0.09
+DAX_Futures = 3.0
+EUR_GBP = 0.0001
+EUR_USD = 0.00003
+GBP_USD = 0.0001
+GOLD_USD = 1.0
+JAPAN255_Futures = 10.0
+NQ100_Futures = 0.5
+OIL_USD = 0.03
+UK100_Futures = 3.0
+US30_Futures = 4.0
+USD_JPY = 0.002
+USSPX500_Futures = 2.0
+AUD_JPY = 0.005
+AUD_USD = 0.00004
+CAD_JPY = 0.006
+CHF_JPY = 0.008
+COPPER_USD = 0.02
+EUR_AUD = 0.00015
+EUR_CHF = 0.00015
+EUR_JPY = 0.004
+EUR_NZD = 0.00029
+GBP_AUD = 0.00015
+GBP_CHF = 0.00028
+GBP_JPY = 0.009
+NZD_JPY = 0.007
+NZD_USD = 0.00016
+PLATINUM_USD = 5.0
+SILVER_USD = 0.1
+TRY_JPY = 0.014
+USD_CAD = 0.0016
+USD_CHF = 0.00016
+ZAR_JPY = 0.009

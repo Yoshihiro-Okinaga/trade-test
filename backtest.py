@@ -22,10 +22,6 @@ class SignalType(StrEnum):
     ADX = "adx"
     STOCH = "stoch"
 
-#base_path = Path("./stock-data/Manual/FXCFD")
-#csv_files = list(base_path.rglob("*.csv"))
-#REF_LIST = [f.stem for f in csv_files]  # サブフォルダを含めて CSV を検索
-
 # ワーカープロセスごとに、読み込み済みのCSVデータを保持する
 DATA_CACHE = {}
 
@@ -182,7 +178,12 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
     # === 売買シミュレーション ===
     results = []
 
-    TRADE_COST = 0.0#TARGET_LIST[target_name]
+    # 売買コスト（値幅）。仕掛け時に1回だけ引く片道コスト。
+    # target_list が銘柄->コストの辞書ならその値、リスト等で引けなければ 0。
+    try:
+        TRADE_COST = float(config.target_list[target_name])
+    except (KeyError, TypeError, ValueError):
+        TRADE_COST = 0.0
     POS_NAME = ["long", "short"]
     POS_RATE = [1, -1]
     OPERATORS = [operator.gt, operator.lt]
