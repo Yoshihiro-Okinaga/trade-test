@@ -196,8 +196,10 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
     target_shifts = merged["target_exit"].to_numpy()
     target_changes = merged["target_change"].to_numpy()
 
-    # 指標ごとの閾値（幅）。center は 0 固定。
+    # 指標ごとの閾値。center を中心に ±width を超えたら売買シグナルとする。
+    # center=0 の指標（bb, change, sma, macd, di）は従来と同じ挙動になる。
     threshold_width = config.width_of(signal_type)
+    threshold_center = config.center_of(signal_type)
 
     for idx in range(len(merged)):
         date = dates[idx]
@@ -206,10 +208,13 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
         profit_ls = [None, None]
         profit_ls_pct = [None, None]
 
+        # 中心からの距離で判定する（rsi などは center=50）
+        signal_dev = ref_signal - threshold_center
+
         for i in range(2):
-            if config.counter_trade and not OPERATORS_COUNTER[i](ref_signal, -POS_RATE[i] * threshold_width):
+            if config.counter_trade and not OPERATORS_COUNTER[i](signal_dev, -POS_RATE[i] * threshold_width):
                 continue
-            if not config.counter_trade and not OPERATORS[i](ref_signal, POS_RATE[i] * threshold_width):
+            if not config.counter_trade and not OPERATORS[i](signal_dev, POS_RATE[i] * threshold_width):
                 continue
 
             entry_price = target_close

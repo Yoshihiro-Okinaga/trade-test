@@ -80,15 +80,15 @@ target_list = [
 ]
 
 signal_type_list = [
-    "change",
-    "sma",
-    "bb",
-    "macd",
-    "rsi",
-    "di",
-    "adx",
+    #"change",
+    #"sma",
+    #"bb",
+    #"macd",
+    #"rsi",
+    #"di",
+    #"adx",
     "stoch",
-    "Test"
+    #"Test"
 ]
 
 ref_lag_days_list = [
@@ -120,4 +120,12 @@ default_threshold_width = 1.0
 
 [threshold_width]
 bb = 2.0
+rsi = 20.0
+stoch = 30.0
+
+# 指標の中心値。rsi は 0〜100 の範囲で中心 50（30/70 で判定）。
+# ここに書かない指標は中心 0 とみなす（bb, change, sma, macd, di）。
+[threshold_center]
+rsi = 50.0
+stoch = 50.0
 

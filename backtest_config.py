@@ -23,8 +23,15 @@ class BackTestConfig:
         # 未指定の指標は default_threshold_width を使う（従来の RISE_PERCENT 相当）。
         self.threshold_width: dict = config_data.get("threshold_width", {})
         self.default_threshold_width: float = config_data.get("default_threshold_width", 1.0)
+        # 指標ごとの中心値。rsi/stoch のように中心が 0 でない指標のために使う。
+        # 未指定の指標は中心 0（bb, change, sma, macd, di など）。
+        self.threshold_center: dict = config_data.get("threshold_center", {})
 
     def width_of(self, signal_type: str) -> float:
         """指標に対応する閾値の幅を返す。未設定ならデフォルト。"""
         return self.threshold_width.get(signal_type, self.default_threshold_width)
+
+    def center_of(self, signal_type: str) -> float:
+        """指標に対応する中心値を返す。未設定なら 0。"""
+        return self.threshold_center.get(signal_type, 0.0)
 
