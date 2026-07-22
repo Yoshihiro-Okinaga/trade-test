@@ -9,7 +9,7 @@ from pathlib import Path
 from enum import StrEnum
 from itertools import combinations
 
-import backtest_config
+from backtest_config import BackTestConfig
 
 # === 設定 ===
 class SignalType(StrEnum):
@@ -19,7 +19,7 @@ class SignalType(StrEnum):
     MACD = "macd"
     RSI = "rsi"
     DI = "di"
-    ADX = "adx"
+    #ADX = "adx"
     STOCH = "stoch"
 
 # ワーカープロセスごとに、読み込み済みのCSVデータを保持する
@@ -50,7 +50,7 @@ def load_data(path):
     return DATA_CACHE[path].copy()
 
 
-def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period):
+def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period):
     if ref_lag_days < 1:
         raise ValueError("ref_lag_daysは1以上を指定してください。")
     if hold_days < 1:
@@ -130,9 +130,9 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
     di_diff = plus_di - minus_di
     ref["ref_signal_di"] = di_diff.shift(start_days)
 
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
-    adx = dx.rolling(sma_period).mean()
-    ref["ref_signal_adx"] = adx.shift(start_days)
+    #dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    #adx = dx.rolling(sma_period).mean()
+    #ref["ref_signal_adx"] = adx.shift(start_days)
 
      # stoch
     low_min = ref["安値"].rolling(sma_period).min()
@@ -202,6 +202,11 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
     threshold_width = config.width_of(signal_type)
     threshold_center = config.center_of(signal_type)
 
+    # 重複補正用: 方向ごと（0=long, 1=short）に「次にエントリー可能になる idx」。
+    # no_overlap=True のとき、保有中（この idx 未満）は同方向の新規を建てない。
+    # long/short は独立に管理する（両建てあり）。
+    next_entry_ok = [0, 0]
+
     for idx in range(len(merged)):
         date = dates[idx]
         target_close = target_closes[idx]
@@ -218,11 +223,20 @@ def calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days,
             if not config.counter_trade and not OPERATORS[i](signal_dev, POS_RATE[i] * threshold_width):
                 continue
 
+            # 重複補正: この方向をまだ保有中なら新規を建てない
+            if config.no_overlap and idx < next_entry_ok[i]:
+                continue
+
             entry_price = target_close
             exit_price = target_shifts[idx]
 
             if pd.isna(exit_price):
                 continue
+
+            # このエントリーは idx + hold_days の行で決済される。
+            # 決済が済むまで同方向の新規を建てないようロックする。
+            if config.no_overlap:
+                next_entry_ok[i] = idx + hold_days
 
             exit_date = exit_dates[idx]
             profit = POS_RATE[i] * target_changes[idx] - TRADE_COST

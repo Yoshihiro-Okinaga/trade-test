@@ -26,6 +26,11 @@ class BackTestConfig:
         # 指標ごとの中心値。rsi/stoch のように中心が 0 でない指標のために使う。
         # 未指定の指標は中心 0（bb, change, sma, macd, di など）。
         self.threshold_center: dict = config_data.get("threshold_center", {})
+        # 重複補正: True の場合、あるポジションを保有している間は
+        # 同方向の新規エントリーをしない（保有期間の重なりを排除する）。
+        # long と short は独立に管理する（両建てあり）。
+        # False なら従来通り、毎日シグナルが出るたびエントリーする。
+        self.no_overlap: bool = config_data.get("no_overlap", False)
 
     def width_of(self, signal_type: str) -> float:
         """指標に対応する閾値の幅を返す。未設定ならデフォルト。"""

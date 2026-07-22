@@ -41,7 +41,6 @@ signal_type_list = [
     "macd",
     "rsi",
     "di",
-    "adx",
     "stoch",
     "Test"
 ]
@@ -64,8 +63,12 @@ sma_period_list = [
 
 trade_code_type = "all"
 min_trade_count = 100
-counter_trade = false
+counter_trade = true
 calc_only_correlation = false
+# 重複補正: true にすると、ポジション保有中は同方向の新規エントリーをしない
+# （保有期間の重なりを排除し、実際に運用可能な形に近づける）。
+# long/short は独立管理（両建てあり）。false で従来通り毎日エントリー。
+no_overlap = true
 use_process_pool = true
 
 # 売買判定の閾値（幅）。|signal| がこの値を超えたら売買する。
