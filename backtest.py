@@ -204,10 +204,10 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     threshold_width = config.width_of(signal_type)
     threshold_center = config.center_of(signal_type)
 
-    # 重複補正用: 方向ごと（0=long, 1=short）に「次にエントリー可能になる idx」。
-    # no_overlap=True のとき、保有中（この idx 未満）は同方向の新規を建てない。
+    # 重複補正用: 方向ごと（0=long, 1=short）に次のエントリー可能日を保持する。
+    # no_overlap=True のとき、決済日より前は同方向の新規を建てない。
     # long/short は独立に管理する（両建てあり）。
-    next_entry_ok = [0, 0]
+    next_entry_ok_date = [None, None]
 
     for idx in range(len(merged)):
         date = dates[idx]
@@ -226,7 +226,11 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
                 continue
 
             # 重複補正: この方向をまだ保有中なら新規を建てない
-            if config.no_overlap and idx < next_entry_ok[i]:
+            if (
+                config.no_overlap
+                and next_entry_ok_date[i] is not None
+                and date < next_entry_ok_date[i]
+            ):
                 continue
 
             entry_price = target_close
@@ -235,12 +239,12 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
             if pd.isna(exit_price):
                 continue
 
-            # このエントリーは idx + hold_days の行で決済される。
-            # 決済が済むまで同方向の新規を建てないようロックする。
-            if config.no_overlap:
-                next_entry_ok[i] = idx + hold_days
-
             exit_date = exit_dates[idx]
+
+            # 実際の決済日まで同方向の新規を建てないようロックする。
+            # RefとTargetで休場日が異なっても、結合後の行数には依存しない。
+            if config.no_overlap:
+                next_entry_ok_date[i] = exit_date
             profit = POS_RATE[i] * target_changes[idx] - TRADE_COST
             profit_pct = profit / entry_price * 100
             profit_ls[i] = profit
