@@ -25,24 +25,73 @@ class SignalType(StrEnum):
 # ワーカープロセスごとに、読み込み済みのCSVデータを保持する
 DATA_CACHE = {}
 
+DATA_FOLDER = Path(__file__).resolve().parent / "stock-data" / "Manual"
+REQUIRED_COLUMNS = ["日付", "終値", "高値", "安値"]
+
 
 # === データ読み込み ===
 def load_data(path):
     if path in DATA_CACHE:
         return DATA_CACHE[path].copy()
 
-    folder = Path("./stock-data/Manual/")   # 探したいフォルダ
+    if not DATA_FOLDER.is_dir():
+        raise FileNotFoundError(
+            f"データフォルダが見つかりません: {DATA_FOLDER}"
+        )
 
-    files = list(folder.rglob(f"{path}.csv"))
+    files = sorted(DATA_FOLDER.rglob(f"{path}.csv"))
 
     if not files:
-        raise FileNotFoundError(f"{path} が見つかりませんでした")
+        raise FileNotFoundError(f"{path}.csv が見つかりませんでした: {DATA_FOLDER}")
+    if len(files) > 1:
+        file_list = "\n".join(str(file) for file in files)
+        raise RuntimeError(f"{path}.csv が複数見つかりました:\n{file_list}")
 
-    df = pd.read_csv(files[0])
+    csv_path = files[0]
+    df = pd.read_csv(csv_path)
+
+    missing_columns = [column for column in REQUIRED_COLUMNS if column not in df.columns]
+    if missing_columns:
+        raise ValueError(
+            f"{csv_path}: 必須列がありません: {', '.join(missing_columns)}"
+        )
+
+    parsed_dates = pd.to_datetime(df["日付"], errors="coerce")
+    invalid_date_rows = df.index[df["日付"].notna() & parsed_dates.isna()]
+    if len(invalid_date_rows) > 0:
+        row_numbers = ", ".join(str(index + 2) for index in invalid_date_rows[:5])
+        raise ValueError(f"{csv_path}: 日付を変換できません（行: {row_numbers}）")
+    df["日付"] = parsed_dates
+
+    for column in ["終値", "高値", "安値"]:
+        numeric_values = pd.to_numeric(df[column], errors="coerce")
+        invalid_rows = df.index[df[column].notna() & numeric_values.isna()]
+        if len(invalid_rows) > 0:
+            row_numbers = ", ".join(str(index + 2) for index in invalid_rows[:5])
+            raise ValueError(
+                f"{csv_path}: {column}を数値に変換できません（行: {row_numbers}）"
+            )
+        df[column] = numeric_values
+
     # 他の列（出来高など）の欠損で行が消えると shift() の「何営業日前」がズレるため、
     # 実際に使う列だけを対象にする
-    df = df.dropna(subset=["日付", "終値", "高値", "安値"])
-    df["日付"] = pd.to_datetime(df["日付"])
+    df = df.dropna(subset=REQUIRED_COLUMNS)
+    if df.empty:
+        raise ValueError(f"{csv_path}: 有効な価格データがありません")
+
+    duplicate_dates = df["日付"].duplicated(keep=False)
+    if duplicate_dates.any():
+        dates = df.loc[duplicate_dates, "日付"].dt.strftime("%Y-%m-%d").unique()
+        date_list = ", ".join(dates[:5])
+        raise ValueError(f"{csv_path}: 日付が重複しています: {date_list}")
+
+    invalid_price_range = df["高値"] < df["安値"]
+    if invalid_price_range.any():
+        row_numbers = ", ".join(
+            str(index + 2) for index in df.index[invalid_price_range][:5]
+        )
+        raise ValueError(f"{csv_path}: 高値が安値を下回っています（行: {row_numbers}）")
+
     df = df.sort_values("日付")
     DATA_CACHE[path] = df
 
