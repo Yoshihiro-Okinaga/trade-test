@@ -149,11 +149,12 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
         for signal_type_1, signal_type_2 in combinations(SignalType, 2):
             signal_1 = ref[f"ref_signal_{signal_type_1}"]
             signal_2 = ref[f"ref_signal_{signal_type_2}"]
+            ref["tmp_product"] = signal_1 * signal_2
 
             for signal in (-1, 1):
-                ref["tmp_product"] = signal_1 * signal_2
                 ref["tmp_signal"] = ref["tmp_product"].where(ref["tmp_product"] * signal > 0)
                 if ref["tmp_signal"].count() < config.min_trade_count:
+                    del ref["tmp_signal"]
                     continue
 
                 merged_tmp = pd.merge(ref, target, on="日付", suffixes=("_Ref", "_Target"))
@@ -162,8 +163,9 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
                     corr_abs = corr_tmp
                     ref["ref_signal"] = ref["tmp_signal"]
                     other_message = f"（Test: {signal_type_1} * {signal_type_2} * {signal}）"
-                del ref["tmp_product"]
                 del ref["tmp_signal"]
+
+            del ref["tmp_product"]
 
     # === 日付で結合（inner join）===
     merged = pd.merge(ref, target, on="日付", suffixes=("_Ref", "_Target"))
@@ -286,6 +288,7 @@ def run_one(config, task):
             "ref_lag_days": ref_lag_days,
             "hold_days": hold_days,
             "start_days": start_days,
+            "sma_period": sma_period,
             "correlation": corr,
             "other_message": other_message,
         }

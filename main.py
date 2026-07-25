@@ -60,8 +60,9 @@ def main():
     # 行順を完全に決定的にする。
     df_ranking["_abs_corr"] = df_ranking["correlation"].abs()
     df_ranking = df_ranking.sort_values(
-        ["_abs_corr", "target", "ref", "signal_type"],
-        ascending=[False, True, True, True],
+        ["_abs_corr", "target", "ref", "signal_type",
+         "ref_lag_days", "hold_days", "start_days", "sma_period"],
+        ascending=[False, True, True, True, True, True, True, True],
         kind="mergesort",
     ).drop(columns="_abs_corr").reset_index(drop=True)
     df_ranking.insert(0, "rank", df_ranking.index + 1)

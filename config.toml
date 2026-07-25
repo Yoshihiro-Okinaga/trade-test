@@ -42,7 +42,7 @@ signal_type_list = [
     "rsi",
     "di",
     "stoch",
-    "Test"
+    #"Test"
 ]
 
 ref_lag_days_list = [
@@ -50,7 +50,11 @@ ref_lag_days_list = [
 ]
 
 hold_days_list = [
+    #5,
+    #10,
     15,
+    #20,
+    #25,
 ]
 
 start_days_list = [
@@ -59,16 +63,14 @@ start_days_list = [
 
 sma_period_list = [
     10,
+    #20,
 ]
 
-trade_code_type = "all"
-min_trade_count = 100
-counter_trade = true
-calc_only_correlation = false
-# 重複補正: true にすると、ポジション保有中は同方向の新規エントリーをしない
-# （保有期間の重なりを排除し、実際に運用可能な形に近づける）。
-# long/short は独立管理（両建てあり）。false で従来通り毎日エントリー。
-no_overlap = true
+counter_trade = false          # 逆張り（リバーサルに合わせる）
+calc_only_correlation = false # 売買成績が見たい
+no_overlap = true             # 重複補正あり
+trade_code_type = "all"      # 自己ペアのみ（クロスは今回不要）
+min_trade_count = 30          # ★下げる必要あり
 use_process_pool = true
 
 # 売買判定の閾値（幅）。|signal| がこの値を超えたら売買する。
