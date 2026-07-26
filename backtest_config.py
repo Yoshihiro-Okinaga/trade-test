@@ -42,8 +42,21 @@ class BackTestConfig:
         self.use_excess_return: bool = config_data.get("use_excess_return", False)
 
     def width_of(self, signal_type: str) -> float:
-        """指標に対応する閾値の幅を返す。未設定ならデフォルト。"""
-        return self.threshold_width.get(signal_type, self.default_threshold_width)
+        """指標に対応する閾値の幅を返す。未設定ならデフォルト。
+        リストが設定されている場合は先頭の値を返す。"""
+        value = self.threshold_width.get(signal_type, self.default_threshold_width)
+        if isinstance(value, (list, tuple)):
+            return value[0]
+        return value
+
+    def widths_of(self, signal_type: str) -> list:
+        """指標に対応する閾値の候補を一覧で返す。
+        config に数値を書けば1件、リストを書けばその全件を試せる。
+        例: bb = [1.0, 1.5, 2.0] と書くと3通りを別々のタスクとして回す。"""
+        value = self.threshold_width.get(signal_type, self.default_threshold_width)
+        if isinstance(value, (list, tuple)):
+            return list(value)
+        return [value]
 
     def center_of(self, signal_type: str) -> float:
         """指標に対応する中心値を返す。未設定なら 0。"""

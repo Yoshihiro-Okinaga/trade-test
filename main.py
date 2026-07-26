@@ -27,10 +27,12 @@ def main():
     RANKING_OUTPUT_FILE = "trade_ranking_counter.csv" if config.counter_trade else "trade_ranking.csv"
 
     tasks = [
-        (ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period)
+        (ref_name, target_name, signal_type, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
         for ref_name in config.ref_list
         for target_name in config.target_list
         for signal_type in config.signal_type_list
+        # 閾値は指標ごとにスケールが違うので、指標ごとの候補リストを展開する
+        for threshold_width in config.widths_of(signal_type)
         for ref_lag_days in config.ref_lag_days_list
         for hold_days in config.hold_days_list
         for start_days in config.start_days_list
@@ -60,9 +62,9 @@ def main():
     # 行順を完全に決定的にする。
     df_ranking["_abs_corr"] = df_ranking["correlation"].abs()
     df_ranking = df_ranking.sort_values(
-        ["_abs_corr", "target", "ref", "signal_type",
+        ["_abs_corr", "target", "ref", "signal_type", "threshold_width",
          "ref_lag_days", "hold_days", "start_days", "sma_period"],
-        ascending=[False, True, True, True, True, True, True, True],
+        ascending=[False, True, True, True, True, True, True, True, True],
         kind="mergesort",
     ).drop(columns="_abs_corr").reset_index(drop=True)
     df_ranking.insert(0, "rank", df_ranking.index + 1)

@@ -83,7 +83,7 @@ use_excess_return = true
 # 空文字 "" にするとフィルタなし（従来と同じ挙動）。
 filter_signal_type = "" #"adx"
 filter_max = 25.0
-trade_code_type = "same"      # 自己ペアのみ（クロスは今回不要）
+trade_code_type = "all"      # 自己ペアのみ（クロスは今回不要）
 min_trade_count = 30          # ★下げる必要あり
 use_process_pool = true
 
@@ -92,8 +92,11 @@ use_process_pool = true
 # ここに書かない指標は default_threshold_width が使われる。
 default_threshold_width = 1.0
 
+# 数値を書けば1通り、リストを書けばその全通りを別タスクとして試す。
+# 例: bb = [1.0, 1.5, 2.0, 2.5, 3.0] で5通りの閾値を一度に比較できる。
+# 指標ごとに値のスケールが違うので、リストも指標ごとに指定する。
 [threshold_width]
-bb = 2.0
+bb = [1.0, 1.5, 2.0, 2.5, 3.0]
 rsi = 20.0
 stoch = 30.0
 di = 20.0

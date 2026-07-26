@@ -1,10 +1,5 @@
-import sys
 import operator
-import os
-import datetime
-import tomllib
 import pandas as pd
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from enum import StrEnum
 from itertools import combinations
@@ -100,7 +95,7 @@ def load_data(path):
     return DATA_CACHE[path].copy()
 
 
-def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period):
+def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_type, threshold_width, ref_lag_days, hold_days, start_days, sma_period):
     if ref_lag_days < 1:
         raise ValueError("ref_lag_daysは1以上を指定してください。")
     if hold_days < 1:
@@ -277,7 +272,7 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
 
     # 指標ごとの閾値。center を中心に ±width を超えたら売買シグナルとする。
     # center=0 の指標（bb, change, sma, macd, di）は従来と同じ挙動になる。
-    threshold_width = config.width_of(signal_type)
+    # threshold_width は引数で受け取る（config で複数候補を指定できるため）
     threshold_center = config.center_of(signal_type)
 
     # 売買フィルタ。指定された指標（adx など）の値が filter_max 以下の日だけ
@@ -388,15 +383,16 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
 
 def run_one(config, task):
     """ワーカープロセスで実行される単位。集計まで済ませて軽い dict だけ返す。"""
-    ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period = task
+    ref_name, target_name, signal_type, threshold_width, ref_lag_days, hold_days, start_days, sma_period = task
 
     result_base = {}
-    df_results, corr, other_message = calc_trade_results(config, ref_name, target_name, signal_type, ref_lag_days, hold_days, start_days, sma_period)
+    df_results, corr, other_message = calc_trade_results(config, ref_name, target_name, signal_type, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
     if corr is not None:
         result_base = {
             "target": target_name,
             "ref": ref_name,
             "signal_type": signal_type,
+            "threshold_width": threshold_width,
             "ref_lag_days": ref_lag_days,
             "hold_days": hold_days,
             "start_days": start_days,
