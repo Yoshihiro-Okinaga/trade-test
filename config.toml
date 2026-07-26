@@ -42,6 +42,7 @@ signal_type_list = [
     "rsi",
     "di",
     "stoch",
+    "streak",
     #"Test"
 ]
 
@@ -69,7 +70,20 @@ sma_period_list = [
 counter_trade = false          # 逆張り（リバーサルに合わせる）
 calc_only_correlation = false # 売買成績が見たい
 no_overlap = true             # 重複補正あり
-trade_code_type = "all"      # 自己ペアのみ（クロスは今回不要）
+
+# 超過リターン評価。true にすると、各トレードの損益から
+# 「その銘柄を単に保有していた場合の平均的な変動」を差し引く。
+# long の追い風と short の逆風が除去され、市場の方向バイアスを
+# 除いた純粋な優位性を測れる。false なら従来通りの実損益。
+use_excess_return = true
+
+# 売買フィルタ。指定した指標の値が filter_max 以下の日だけエントリーする。
+# adx は「トレンドの強さ」で方向を持たないため単独売買には使えないが、
+# 「トレンドが弱い（レンジ）ときだけ逆張りする」という絞り込みに使える。
+# 空文字 "" にするとフィルタなし（従来と同じ挙動）。
+filter_signal_type = "" #"adx"
+filter_max = 25.0
+trade_code_type = "same"      # 自己ペアのみ（クロスは今回不要）
 min_trade_count = 30          # ★下げる必要あり
 use_process_pool = true
 
@@ -82,6 +96,12 @@ default_threshold_width = 1.0
 bb = 2.0
 rsi = 20.0
 stoch = 30.0
+di = 20.0
+# macd はヒストグラムのゼロ交差を +1 / -1 / 0 で表すため、
+# 0.5 にしておけば「交差した日だけ」シグナルが成立する。
+macd = 0.5
+# streak は連続日数そのもの。2.5 なら「3日以上の連続」で成立する。
+streak = 2.5
 
 # 指標の中心値。rsi/stoch は 0〜100 の範囲で中心 50。
 # rsi は 30/70、stoch は 20/80 で判定する。
@@ -96,15 +116,15 @@ stoch = 50.0
 # 実際のブローカーのスプレッドが分かり次第、各自で埋めること。
 # ここが 0.0 のままだと、その銘柄はコストなしで評価される点に注意。
 [target_list]
-CBOE_Volatility_Index = 0.09
+#CBOE_Volatility_Index = 0.09
 DAX_Futures = 3.0
 EUR_GBP = 0.0001
 EUR_USD = 0.00003
 GBP_USD = 0.0001
-GOLD_USD = 1.0
+#GOLD_USD = 1.0
 JAPAN255_Futures = 10.0
 NQ100_Futures = 0.5
-OIL_USD = 0.03
+#OIL_USD = 0.03
 UK100_Futures = 3.0
 US30_Futures = 4.0
 USD_JPY = 0.002
@@ -113,7 +133,7 @@ AUD_JPY = 0.005
 AUD_USD = 0.00004
 CAD_JPY = 0.006
 CHF_JPY = 0.008
-COPPER_USD = 0.02
+#COPPER_USD = 0.02
 EUR_AUD = 0.00015
 EUR_CHF = 0.00015
 EUR_JPY = 0.004
@@ -123,9 +143,9 @@ GBP_CHF = 0.00028
 GBP_JPY = 0.009
 NZD_JPY = 0.007
 NZD_USD = 0.00016
-PLATINUM_USD = 5.0
-SILVER_USD = 0.1
+#PLATINUM_USD = 5.0
+#SILVER_USD = 0.1
 TRY_JPY = 0.014
-USD_CAD = 0.0016
+#USD_CAD = 0.0016
 USD_CHF = 0.00016
-ZAR_JPY = 0.009
+#ZAR_JPY = 0.009

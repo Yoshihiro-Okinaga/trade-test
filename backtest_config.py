@@ -31,6 +31,15 @@ class BackTestConfig:
         # long と short は独立に管理する（両建てあり）。
         # False なら従来通り、毎日シグナルが出るたびエントリーする。
         self.no_overlap: bool = config_data.get("no_overlap", False)
+        # 売買のフィルタ。指定するとその指標の値が filter_max 以下の日だけ
+        # エントリーする。空文字ならフィルタなし（従来と同じ挙動）。
+        self.filter_signal_type: str = config_data.get("filter_signal_type", "")
+        self.filter_max: float = config_data.get("filter_max", 25.0)
+        # 超過リターン評価: True の場合、各トレードの損益から
+        # 「その銘柄を単に保有していた場合の平均的な変動（ドリフト）」を差し引く。
+        # long からは追い風を、short からは逆風を取り除くので、
+        # 市場全体の方向バイアスを除いた純粋な優位性を測れる。
+        self.use_excess_return: bool = config_data.get("use_excess_return", False)
 
     def width_of(self, signal_type: str) -> float:
         """指標に対応する閾値の幅を返す。未設定ならデフォルト。"""

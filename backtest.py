@@ -21,6 +21,7 @@ class SignalType(StrEnum):
     DI = "di"
     #ADX = "adx"
     STOCH = "stoch"
+    STREAK = "streak"
 
 # ワーカープロセスごとに、読み込み済みのCSVデータを保持する
 DATA_CACHE = {}
@@ -139,11 +140,24 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     bb = (ref["ref_base"] - sma) / bb_std   # 何σ乖離しているか（z-score）
     ref["ref_signal_bb"] = bb.shift(start_days)
     
-    # macd
+    # macd（ヒストグラムのゼロ交差を +1 / -1 / 0 で表す）
+    # macd 本体は価格スケールに比例するため、値そのものを閾値と比べると
+    # 銘柄ごとに判定基準が変わってしまう。符号が変わった瞬間だけを見れば
+    # スケールに依存しないので、交差をイベントとして扱う。
     ema_fast = ref["ref_base"].ewm(span=12, adjust=False).mean()
     ema_slow = ref["ref_base"].ewm(span=26, adjust=False).mean()
     macd = ema_fast - ema_slow
-    ref["ref_signal_macd"] = macd.shift(start_days)
+    macd_signal_line = macd.ewm(span=9, adjust=False).mean()
+    macd_hist = macd - macd_signal_line
+    prev_hist = macd_hist.shift(1)
+    # マイナス→プラスで +1、プラス→マイナスで -1、それ以外は 0。
+    # 立ち上がり（NaN）の区間は交差と判定しない。
+    macd_cross = (
+        ((macd_hist > 0) & (prev_hist <= 0)).astype(float)
+        - ((macd_hist < 0) & (prev_hist >= 0)).astype(float)
+    )
+    macd_cross = macd_cross.where(macd_hist.notna() & prev_hist.notna())
+    ref["ref_signal_macd"] = macd_cross.shift(start_days)
 
     # rsi
     delta = ref["ref_base"].diff()
@@ -179,15 +193,28 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     di_diff = plus_di - minus_di
     ref["ref_signal_di"] = di_diff.shift(start_days)
 
-    #dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
-    #adx = dx.rolling(sma_period).mean()
-    #ref["ref_signal_adx"] = adx.shift(start_days)
+    # ADX（トレンドの強さ。方向を持たないので単独売買には使わず、
+    # フィルタ専用として使う。config の filter_signal_type で指定する）
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    adx = dx.rolling(sma_period).mean()
+    ref["ref_signal_adx"] = adx.shift(start_days)
 
      # stoch
     low_min = ref["安値"].rolling(sma_period).min()
     high_max = ref["高値"].rolling(sma_period).max()
     stoch_k = 100 * (ref["ref_base"] - low_min) / (high_max - low_min)
     ref["ref_signal_stoch"] = stoch_k.shift(start_days)
+
+    # streak（何日連続で上げ／下げたか）
+    # 3日連続で上げたら +3、2日連続で下げたら -2 のように符号付きで表す。
+    # 前日比が変わらない日（0）は連続を途切れさせ、その日は 0 とする。
+    # 閾値 width=2.5 なら「3日以上の連続」でシグナル成立となる。
+    price_diff = ref["ref_base"].diff()
+    diff_sign = (price_diff > 0).astype(int) - (price_diff < 0).astype(int)
+    # 符号が切り替わったところで区切り、その区間内での通し番号を連続日数とする
+    streak_group = (diff_sign != diff_sign.shift(1)).cumsum()
+    streak_length = diff_sign.groupby(streak_group).cumcount() + 1
+    ref["ref_signal_streak"] = (streak_length * diff_sign).shift(start_days)
 
     other_message = ""
 
@@ -253,6 +280,27 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     threshold_width = config.width_of(signal_type)
     threshold_center = config.center_of(signal_type)
 
+    # 売買フィルタ。指定された指標（adx など）の値が filter_max 以下の日だけ
+    # エントリーする。adx は方向を持たないので単独では売買に使えないが、
+    # 「トレンドが弱い（レンジ）ときだけ逆張りする」という絞り込みに使える。
+    # filter_signal_type が空ならフィルタなし（従来と同じ挙動）。
+    filter_values = None
+    if config.filter_signal_type:
+        filter_column = f"ref_signal_{config.filter_signal_type}"
+        if filter_column not in merged.columns:
+            raise KeyError(f"フィルタ用の列 {filter_column} がありません。")
+        filter_values = merged[filter_column].to_numpy()
+
+    # 超過リターン評価用のドリフト。
+    # その銘柄を hold_days だけ単に保有した場合の平均変動率を求める。
+    # long はこの分の追い風を、short は逆風を受けているので、
+    # 各トレードから POS_RATE 倍して差し引けば方向バイアスを除去できる。
+    drift_pct = 0.0
+    if config.use_excess_return:
+        drift_pct = merged["target_change_pct"].mean()
+        if pd.isna(drift_pct):
+            drift_pct = 0.0
+
     # 重複補正用: 方向ごと（0=long, 1=short）に次のエントリー可能日を保持する。
     # no_overlap=True のとき、決済日より前は同方向の新規を建てない。
     # long/short は独立に管理する（両建てあり）。
@@ -264,6 +312,13 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
         ref_signal = ref_signals[idx]
         profit_ls = [None, None]
         profit_ls_pct = [None, None]
+
+        # フィルタが有効なら、条件を満たさない日はエントリーしない。
+        # NaN（計算できない期間）も条件を満たさないものとして除外する。
+        if filter_values is not None:
+            filter_value = filter_values[idx]
+            if pd.isna(filter_value) or filter_value > config.filter_max:
+                continue
 
         # 中心からの距離で判定する（rsi などは center=50）
         signal_dev = ref_signal - threshold_center
@@ -295,6 +350,10 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
             if config.no_overlap:
                 next_entry_ok_date[i] = exit_date
             profit = POS_RATE[i] * target_changes[idx] - TRADE_COST
+            if config.use_excess_return:
+                # ドリフトを価格に換算して差し引く。
+                # long（+1）は追い風を、short（-1）は逆風を取り除く。
+                profit -= POS_RATE[i] * drift_pct / 100 * entry_price
             profit_pct = profit / entry_price * 100
             profit_ls[i] = profit
             profit_ls_pct[i] = profit_pct
