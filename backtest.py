@@ -95,7 +95,7 @@ def load_data(path):
     return DATA_CACHE[path].copy()
 
 
-def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_type, threshold_width, ref_lag_days, hold_days, start_days, sma_period):
+def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_type, counter_trade, threshold_width, ref_lag_days, hold_days, start_days, sma_period):
     if ref_lag_days < 1:
         raise ValueError("ref_lag_daysは1以上を指定してください。")
     if hold_days < 1:
@@ -242,8 +242,6 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     merged = pd.merge(ref, target, on="日付", suffixes=("_Ref", "_Target"))
 
     corr = merged["target_change_pct"].corr(merged["ref_signal"])
-    if config.calc_only_correlation is True:
-        return None, corr, other_message
 
     # Refの終値確定後、次の取引日にTargetを仕掛ける
 
@@ -319,9 +317,9 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
         signal_dev = ref_signal - threshold_center
 
         for i in range(2):
-            if config.counter_trade and not OPERATORS_COUNTER[i](signal_dev, -POS_RATE[i] * threshold_width):
+            if counter_trade and not OPERATORS_COUNTER[i](signal_dev, -POS_RATE[i] * threshold_width):
                 continue
-            if not config.counter_trade and not OPERATORS[i](signal_dev, POS_RATE[i] * threshold_width):
+            if not counter_trade and not OPERATORS[i](signal_dev, POS_RATE[i] * threshold_width):
                 continue
 
             # 重複補正: この方向をまだ保有中なら新規を建てない
@@ -383,15 +381,16 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
 
 def run_one(config, task):
     """ワーカープロセスで実行される単位。集計まで済ませて軽い dict だけ返す。"""
-    ref_name, target_name, signal_type, threshold_width, ref_lag_days, hold_days, start_days, sma_period = task
+    ref_name, target_name, signal_type, counter_trade, threshold_width, ref_lag_days, hold_days, start_days, sma_period = task
 
     result_base = {}
-    df_results, corr, other_message = calc_trade_results(config, ref_name, target_name, signal_type, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
+    df_results, corr, other_message = calc_trade_results(config, ref_name, target_name, signal_type, counter_trade, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
     if corr is not None:
         result_base = {
             "target": target_name,
             "ref": ref_name,
             "signal_type": signal_type,
+            "counter_trade": counter_trade,
             "threshold_width": threshold_width,
             "ref_lag_days": ref_lag_days,
             "hold_days": hold_days,
@@ -400,8 +399,6 @@ def run_one(config, task):
             "correlation": corr,
             "other_message": other_message,
         }
-        if config.calc_only_correlation is True:
-            return result_base
     
     if df_results is None or df_results.empty:
         return None
@@ -429,7 +426,16 @@ def run_one(config, task):
     year_profits = year_summary["profit"]
     positive_year_ratio = (year_profits > 0).mean() * 100
     worst_year_profit = year_profits.min()
-    #corr_t = corr * (trade_count - 2) ** 0.5 / (1 - corr ** 2) ** 0.5 if abs(corr) < 1 else float("nan")
+    # t値: 平均損益がノイズと区別できるかの目安。
+    # 平均が大きく、ばらつきが小さく、サンプルが多いほど高くなる。
+    # 「平均は良いが少数サンプル」「平均は良いがσが巨大」といった
+    # 見かけ倒しの組み合わせを下位に沈められる。
+    # ただしトレード間・銘柄間の相関までは補正できないため、
+    # 絶対的な有意性判定ではなく相対的な順位付けとして使う。
+    if std_pct and std_pct > 0 and trade_count > 1:
+        t_value = average_pct / std_pct * (trade_count ** 0.5)
+    else:
+        t_value = float("nan")
 
     result_sub = {
         "trade_count": trade_count,
@@ -441,6 +447,7 @@ def run_one(config, task):
         "worst_year_profit": worst_year_profit,
         "average_pct": average_pct,
         "std_pct": std_pct,
+        "t_value": t_value,
         "average_long_pct": average_long_pct,
         "average_short_pct": average_short_pct,
     }

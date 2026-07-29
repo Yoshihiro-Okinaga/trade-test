@@ -24,13 +24,14 @@ def main():
         sys.exit(1)
 
     config = backtest_config.BackTestConfig(config_data)
-    RANKING_OUTPUT_FILE = "trade_ranking_counter.csv" if config.counter_trade else "trade_ranking.csv"
+    RANKING_OUTPUT_FILE = "trade_ranking.csv"
 
     tasks = [
-        (ref_name, target_name, signal_type, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
+        (ref_name, target_name, signal_type, counter_trade, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
         for ref_name in config.ref_list
         for target_name in config.target_list
         for signal_type in config.signal_type_list
+        for counter_trade in config.counter_trade
         # 閾値は指標ごとにスケールが違うので、指標ごとの候補リストを展開する
         for threshold_width in config.widths_of(signal_type)
         for ref_lag_days in config.ref_lag_days_list
@@ -56,17 +57,18 @@ def main():
                 ranking_results.append(result)
 
     df_ranking = pd.DataFrame(ranking_results)
-    # correlation の絶対値で降順に並べる。ただし絶対値が同値の行の順序が
-    # 実行ごとにブレると、出力の diff 比較（テストのゴールデン照合）が壊れる。
-    # そこで target/ref/signal_type をタイブレークに使い、安定ソートで
-    # 行順を完全に決定的にする。
-    df_ranking["_abs_corr"] = df_ranking["correlation"].abs()
+    # t値の降順に並べる。t値は「平均損益がノイズと区別できるか」を測るので、
+    # 平均が大きいだけの見かけ倒し（少数サンプル、σが巨大）を下位に沈められる。
+    # 相関と違い符号に意味がある（プラスが良い）ため、絶対値は取らない。
+    # 同値の行の順序が実行ごとにブレると出力の diff 比較が壊れるので、
+    # 全パラメータをタイブレークに使い、安定ソートで行順を決定的にする。
     df_ranking = df_ranking.sort_values(
-        ["_abs_corr", "target", "ref", "signal_type", "threshold_width",
+        ["t_value", "target", "ref", "signal_type", "counter_trade", "threshold_width",
          "ref_lag_days", "hold_days", "start_days", "sma_period"],
-        ascending=[False, True, True, True, True, True, True, True, True],
+        ascending=[False, True, True, True, True, True, True, True, True, True],
         kind="mergesort",
-    ).drop(columns="_abs_corr").reset_index(drop=True)
+        na_position="last",
+    ).reset_index(drop=True)
     df_ranking.insert(0, "rank", df_ranking.index + 1)
     df_ranking.to_csv(RANKING_OUTPUT_FILE, index=False, encoding="utf-8", float_format=f"%.{ROUND_DIGITS}f",)
 

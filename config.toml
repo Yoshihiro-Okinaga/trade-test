@@ -83,8 +83,10 @@ sma_period_list = [
     #20,
 ]
 
-counter_trade = false          # 逆張り（リバーサルに合わせる）
-calc_only_correlation = false # 売買成績が見たい
+counter_trade = [
+    true,
+    false,
+]
 no_overlap = true             # 重複補正あり
 
 # 超過リターン評価。true にすると、各トレードの損益から
