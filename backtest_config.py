@@ -37,7 +37,13 @@ class BackTestConfig:
         # 「その銘柄を単に保有していた場合の平均的な変動（ドリフト）」を差し引く。
         # long からは追い風を、short からは逆風を取り除くので、
         # 市場全体の方向バイアスを除いた純粋な優位性を測れる。
-        self.use_excess_return: bool = config_data.get("use_excess_return", False)
+        self.use_excess_return: List[bool] = config_data.get("use_excess_return", [False])
+        # 期間別の成績を出すための区切り年。
+        # [2001, 2006, 2011, 2016, 2021] と書くと
+        # 2001-2005, 2006-2010, 2011-2015, 2016-2020, 2021以降 に分割して
+        # それぞれの average_pct と trade_count を列として出力する。
+        # 空リストなら期間別の集計をしない。
+        self.period_years: List[int] = config_data.get("period_years", [])
 
     def width_of(self, signal_type: str) -> float:
         """指標に対応する閾値の幅を返す。未設定ならデフォルト。

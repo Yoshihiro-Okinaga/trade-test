@@ -95,7 +95,7 @@ def load_data(path):
     return DATA_CACHE[path].copy()
 
 
-def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_type, counter_trade, threshold_width, ref_lag_days, hold_days, start_days, sma_period):
+def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period):
     if ref_lag_days < 1:
         raise ValueError("ref_lag_daysは1以上を指定してください。")
     if hold_days < 1:
@@ -289,7 +289,7 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     # long はこの分の追い風を、short は逆風を受けているので、
     # 各トレードから POS_RATE 倍して差し引けば方向バイアスを除去できる。
     drift_pct = 0.0
-    if config.use_excess_return:
+    if use_excess_return:
         drift_pct = merged["target_change_pct"].mean()
         if pd.isna(drift_pct):
             drift_pct = 0.0
@@ -343,7 +343,7 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
             if config.no_overlap:
                 next_entry_ok_date[i] = exit_date
             profit = POS_RATE[i] * target_changes[idx] - TRADE_COST
-            if config.use_excess_return:
+            if use_excess_return:
                 # ドリフトを価格に換算して差し引く。
                 # long（+1）は追い風を、short（-1）は逆風を取り除く。
                 profit -= POS_RATE[i] * drift_pct / 100 * entry_price
@@ -381,16 +381,17 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
 
 def run_one(config, task):
     """ワーカープロセスで実行される単位。集計まで済ませて軽い dict だけ返す。"""
-    ref_name, target_name, signal_type, counter_trade, threshold_width, ref_lag_days, hold_days, start_days, sma_period = task
+    ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period = task
 
     result_base = {}
-    df_results, corr, other_message = calc_trade_results(config, ref_name, target_name, signal_type, counter_trade, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
+    df_results, corr, other_message = calc_trade_results(config, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
     if corr is not None:
         result_base = {
             "target": target_name,
             "ref": ref_name,
             "signal_type": signal_type,
             "counter_trade": counter_trade,
+            "use_excess_return": use_excess_return,
             "threshold_width": threshold_width,
             "ref_lag_days": ref_lag_days,
             "hold_days": hold_days,
@@ -437,6 +438,32 @@ def run_one(config, task):
     else:
         t_value = float("nan")
 
+    # 期間別の成績。config の period_years で区切った各期間について
+    # average_pct と trade_count を出す。全期間で安定してプラスかを
+    # 目で確認するための材料。
+    # 注意: 全期間のデータを見た上で上位を選んでいるので、これは
+    # 「過剰適合を検出する」ものではなく「安定性を眺める」ためのもの。
+    # trade_count も併記するのは、少数トレードの期間の数値を
+    # 信用しすぎないため。
+    period_result = {}
+    if config.period_years:
+        years = sorted(config.period_years)
+        for index, start_year in enumerate(years):
+            if index + 1 < len(years):
+                end_year = years[index + 1] - 1
+                label = f"{start_year}_{end_year}"
+                target_rows = df_results[
+                    (df_results["year"] >= start_year) & (df_results["year"] <= end_year)
+                ]
+            else:
+                label = f"{start_year}_"
+                target_rows = df_results[df_results["year"] >= start_year]
+            count = len(target_rows)
+            period_result[f"average_pct_{label}"] = (
+                target_rows["profit_pct"].mean() if count else float("nan")
+            )
+            period_result[f"trade_count_{label}"] = count
+
     result_sub = {
         "trade_count": trade_count,
         "long_count": long_count,
@@ -452,4 +479,5 @@ def run_one(config, task):
         "average_short_pct": average_short_pct,
     }
 
-    return result_base | result_sub
+    return result_base | result_sub | period_result
+
