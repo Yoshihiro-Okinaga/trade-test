@@ -250,11 +250,10 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     results = []
 
     # 売買コスト（値幅）。仕掛け時に1回だけ引く片道コスト。
-    # target_list が銘柄->コストの辞書ならその値、リスト等で引けなければ 0。
-    try:
-        TRADE_COST = float(config.target_list[target_name])
-    except (KeyError, TypeError, ValueError):
-        TRADE_COST = 0.0
+    TRADE_COST = config.cost_of(target_name)
+    # スワップ（％／日）。ロング保有時に受け取る率で、ショートは符号が反転する。
+    # 保有日数は暦日で数える（スワップは休場日にも発生するため）。
+    SWAP_PCT_PER_DAY = config.swap_of(target_name)
     POS_NAME = ["long", "short"]
     POS_RATE = [1, -1]
     OPERATORS = [operator.gt, operator.lt]
@@ -343,6 +342,12 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
             if config.no_overlap:
                 next_entry_ok_date[i] = exit_date
             profit = POS_RATE[i] * target_changes[idx] - TRADE_COST
+            if SWAP_PCT_PER_DAY:
+                # 保有した暦日数ぶんのスワップを加減する。
+                # long(+1) は設定値のまま、short(-1) は符号が反転する。
+                holding_days = (exit_date - date).days
+                swap_pct = POS_RATE[i] * SWAP_PCT_PER_DAY * holding_days
+                profit += swap_pct / 100 * entry_price
             if use_excess_return:
                 # ドリフトを価格に換算して差し引く。
                 # long（+1）は追い風を、short（-1）は逆風を取り除く。

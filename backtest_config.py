@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 
 class BackTestConfig:
     def __init__(self, config_data):
-        self.ref_list: List[str] = config_data.get("ref_list", [])
-        self.target_list: dict = config_data.get("target_list", {})
+        self.ref_list: List[str] = config_data.get("ref_list_test", [])
+        self.target_list: dict = config_data.get("target_list_test", {})
         self.signal_type_list: List[str] = config_data.get("signal_type_list", [])
         self.ref_lag_days_list: List[int] = config_data.get("ref_lag_days_list", [])
         self.hold_days_list: List[int] = config_data.get("hold_days_list", [])
@@ -44,6 +44,31 @@ class BackTestConfig:
         # それぞれの average_pct と trade_count を列として出力する。
         # 空リストなら期間別の集計をしない。
         self.period_years: List[int] = config_data.get("period_years", [])
+
+    def cost_of(self, target_name: str) -> float:
+        """銘柄の売買コスト（値幅）を返す。
+        target_list は数値でも { cost = ..., swap = ... } の辞書でも書ける。
+        未設定なら 0。"""
+        value = self.target_list.get(target_name)
+        if isinstance(value, dict):
+            value = value.get("cost", 0.0)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def swap_of(self, target_name: str) -> float:
+        """銘柄の日次スワップ率（％／日）を返す。
+        ロング保有時に受け取る率で、プラスならロングで受け取り。
+        ショートは符号を反転させた率になる（売買が対称と仮定）。
+        未設定なら 0。"""
+        value = self.target_list.get(target_name)
+        if isinstance(value, dict):
+            try:
+                return float(value.get("swap", 0.0))
+            except (TypeError, ValueError):
+                return 0.0
+        return 0.0
 
     def width_of(self, signal_type: str) -> float:
         """指標に対応する閾値の幅を返す。未設定ならデフォルト。

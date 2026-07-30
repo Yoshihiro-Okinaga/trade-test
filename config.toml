@@ -34,6 +34,11 @@ ref_list = [
     "ZAR_JPY",
 ]
 
+ref_list_test = [
+    "EUR_GBP",
+    "GBP_CHF",
+]
+
 ref_list_stock = [
     "1963_日揮ホールディングス",
     "3407_旭化成",
@@ -67,11 +72,9 @@ ref_lag_days_list = [
 ]
 
 hold_days_list = [
-    #5,
-    #10,
+    5,
+    10,
     15,
-    #20,
-    #25,
 ]
 
 start_days_list = [
@@ -80,7 +83,9 @@ start_days_list = [
 
 sma_period_list = [
     10,
-    #20,
+    12,
+    15,
+    20,
 ]
 
 counter_trade = [
@@ -108,7 +113,7 @@ period_years = [2001, 2006, 2011, 2016, 2021]
 # 空文字 "" にするとフィルタなし（従来と同じ挙動）。
 filter_signal_type = "" #"adx"
 filter_max = 25.0
-trade_code_type = "all"      # "same", "not_same", "all"
+trade_code_type = "same"      # "same", "not_same", "all"
 min_trade_count = 30
 use_process_pool = true
 
@@ -143,52 +148,61 @@ stoch = 50.0
 # 元コードで判明している値のみ設定済み。残りは 0.0 なので、
 # 実際のブローカーのスプレッドが分かり次第、各自で埋めること。
 # ここが 0.0 のままだと、その銘柄はコストなしで評価される点に注意。
+# 銘柄ごとの売買コストとスワップ。
+# cost: 仕掛け時に1回だけ引く片道コスト（値幅）
+# swap: ロング保有時の日次スワップ率（％／日）。プラスならロングで受け取り、
+#       ショートは符号が反転する（売買が対称なブローカーを想定）。
+#       省略すると 0（株の現物や、値が不明な指数など）。
 [target_list]
-#CBOE_Volatility_Index = 0.09
-DAX_Futures = 3.0
-EUR_GBP = 0.0001
-EUR_USD = 0.00003
-GBP_USD = 0.0001
-#GOLD_USD = 1.0
-JAPAN255_Futures = 10.0
-NQ100_Futures = 0.5
-#OIL_USD = 0.03
-UK100_Futures = 3.0
-US30_Futures = 4.0
-USD_JPY = 0.002
-USSPX500_Futures = 2.0
-AUD_JPY = 0.005
-AUD_USD = 0.00004
-CAD_JPY = 0.006
-CHF_JPY = 0.008
-#COPPER_USD = 0.02
-EUR_AUD = 0.00015
-EUR_CHF = 0.00015
-EUR_JPY = 0.004
-EUR_NZD = 0.00029
-GBP_AUD = 0.00015
-GBP_CHF = 0.00028
-GBP_JPY = 0.009
-NZD_JPY = 0.007
-NZD_USD = 0.00016
-#PLATINUM_USD = 5.0
-#SILVER_USD = 0.1
-TRY_JPY = 0.014
-#USD_CAD = 0.0016
-USD_CHF = 0.00016
-#ZAR_JPY = 0.009
+#CBOE_Volatility_Index = { cost = 0.09 }
+DAX_Futures = { cost = 3.0 }
+EUR_GBP = { cost = 0.0001, swap = -0.00399 }
+EUR_USD = { cost = 0.00003, swap = -0.00367 }
+GBP_USD = { cost = 0.0001, swap = -0.00028 }
+#GOLD_USD = { cost = 1.0 }
+JAPAN255_Futures = { cost = 10.0 }
+NQ100_Futures = { cost = 0.5 }
+#OIL_USD = { cost = 0.03 }
+UK100_Futures = { cost = 3.0 }
+US30_Futures = { cost = 4.0 }
+USD_JPY = { cost = 0.002, swap = 0.00985 }
+USSPX500_Futures = { cost = 2.0 }
+AUD_JPY = { cost = 0.005, swap = 0.00983 }
+AUD_USD = { cost = 0.00004, swap = 0.00106 }
+CAD_JPY = { cost = 0.006, swap = 0.0 }
+CHF_JPY = { cost = 0.008, swap = -0.00171 }
+#COPPER_USD = { cost = 0.02 }
+EUR_AUD = { cost = 0.00015, swap = -0.0055 }
+EUR_CHF = { cost = 0.00015, swap = 0.0055 }
+EUR_JPY = { cost = 0.004, swap = 0.00431 }
+EUR_NZD = { cost = 0.00029 }
+GBP_AUD = { cost = 0.00015, swap = -0.00148 }
+GBP_CHF = { cost = 0.00028, swap = 0.00994 }
+GBP_JPY = { cost = 0.009, swap = 0.00813 }
+NZD_JPY = { cost = 0.007, swap = 0.00466 }
+NZD_USD = { cost = 0.00016, swap = -0.0035 }
+#PLATINUM_USD = { cost = 5.0 }
+#SILVER_USD = { cost = 0.1 }
+TRY_JPY = { cost = 0.014, swap = 0.07375 }
+#USD_CAD = { cost = 0.0016 }
+USD_CHF = { cost = 0.00016, swap = 0.00873 }
+#ZAR_JPY = { cost = 0.009 }
+
+[target_list_test]
+EUR_GBP = { cost = 0.0001, swap = -0.00399 }
+GBP_CHF = { cost = 0.00028, swap = 0.00994 }
 
 [target_list_stock]
-"1963_日揮ホールディングス" = 0
-"3407_旭化成" = 0
-"5401_日本製鉄" = 0
-"6752_パナソニック" = 0
-"9501_東京電力ホールディングス" = 0
-"9502_中部電力" = 0
-"9503_関西電力" = 0
-"9504_中国電力" = 0
-"9505_北陸電力" = 0
-"9506_東北電力" = 0
-"9507_四国電力" = 0
-"9508_九州電力" = 0
-"9509_北海道電力" = 0
+"1963_日揮ホールディングス" = { cost = 0 }
+"3407_旭化成" = { cost = 0 }
+"5401_日本製鉄" = { cost = 0 }
+"6752_パナソニック" = { cost = 0 }
+"9501_東京電力ホールディングス" = { cost = 0 }
+"9502_中部電力" = { cost = 0 }
+"9503_関西電力" = { cost = 0 }
+"9504_中国電力" = { cost = 0 }
+"9505_北陸電力" = { cost = 0 }
+"9506_東北電力" = { cost = 0 }
+"9507_四国電力" = { cost = 0 }
+"9508_九州電力" = { cost = 0 }
+"9509_北海道電力" = { cost = 0 }
