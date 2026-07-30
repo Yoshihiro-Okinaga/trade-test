@@ -37,6 +37,9 @@ ref_list = [
 ref_list_test = [
     "EUR_GBP",
     "GBP_CHF",
+    "EUR_CHF",
+    "GBP_AUD",
+    "EUR_AUD",
 ]
 
 ref_list_stock = [
@@ -191,6 +194,9 @@ USD_CHF = { cost = 0.00016, swap = 0.00873 }
 [target_list_test]
 EUR_GBP = { cost = 0.0001, swap = -0.00399 }
 GBP_CHF = { cost = 0.00028, swap = 0.00994 }
+EUR_CHF = { cost = 0.00015, swap = 0.0055 }
+GBP_AUD = { cost = 0.00015, swap = -0.00148 }
+EUR_AUD = { cost = 0.00015, swap = -0.0055 }
 
 [target_list_stock]
 "1963_日揮ホールディングス" = { cost = 0 }
