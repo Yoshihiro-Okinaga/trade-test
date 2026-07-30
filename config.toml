@@ -115,6 +115,7 @@ stoch = 50.0
 # swap: ロング保有時の日次スワップ率（％／日）。プラスならロングで受け取り、
 #       ショートは符号が反転する。省略すると 0。
 [symbols]
+#CBOE_Volatility_Index = { cost = 0.09 }
 DAX_Futures = { cost = 3.0 }
 EUR_GBP = { cost = 0.0001, swap = -0.00399 }
 EUR_USD = { cost = 0.00003, swap = -0.00367 }
