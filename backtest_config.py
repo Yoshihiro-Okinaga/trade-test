@@ -4,8 +4,23 @@ from dataclasses import dataclass, field
 
 class BackTestConfig:
     def __init__(self, config_data):
-        self.ref_list: List[str] = config_data.get("ref_list_test", [])
-        self.target_list: dict = config_data.get("target_list_test", {})
+        # 銘柄の定義（コスト・スワップ）は symbols に1箇所だけ書く。
+        # どれを使うかは symbol_names で選び、target から外したいものだけ
+        # exclude_names に書く（ref には含まれるが target にはならない）。
+        self.symbols: dict = config_data.get("symbols", {})
+        self.symbol_names: List[str] = config_data.get("symbol_names", [])
+        self.exclude_names: List[str] = config_data.get("exclude_names", [])
+        # ref は指定された全銘柄、target は除外を引いたもの。
+        excluded = set(self.exclude_names)
+        self.ref_list: List[str] = list(self.symbol_names)
+        self.target_list: List[str] = [
+            name for name in self.symbol_names if name not in excluded
+        ]
+        # symbols に定義がない銘柄は、コスト0として黙って計算されてしまうため、
+        # 起動時に気づけるようにする。
+        undefined = [name for name in self.symbol_names if name not in self.symbols]
+        if undefined:
+            raise ValueError("symbolsに定義がない銘柄があります: " + ", ".join(undefined))
         self.signal_type_list: List[str] = config_data.get("signal_type_list", [])
         self.ref_lag_days_list: List[int] = config_data.get("ref_lag_days_list", [])
         self.hold_days_list: List[int] = config_data.get("hold_days_list", [])
@@ -47,9 +62,9 @@ class BackTestConfig:
 
     def cost_of(self, target_name: str) -> float:
         """銘柄の売買コスト（値幅）を返す。
-        target_list は数値でも { cost = ..., swap = ... } の辞書でも書ける。
+        symbols には数値でも { cost = ..., swap = ... } の辞書でも書ける。
         未設定なら 0。"""
-        value = self.target_list.get(target_name)
+        value = self.symbols.get(target_name)
         if isinstance(value, dict):
             value = value.get("cost", 0.0)
         try:
@@ -62,7 +77,7 @@ class BackTestConfig:
         ロング保有時に受け取る率で、プラスならロングで受け取り。
         ショートは符号を反転させた率になる（売買が対称と仮定）。
         未設定なら 0。"""
-        value = self.target_list.get(target_name)
+        value = self.symbols.get(target_name)
         if isinstance(value, dict):
             try:
                 return float(value.get("swap", 0.0))

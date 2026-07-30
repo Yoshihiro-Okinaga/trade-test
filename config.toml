@@ -1,61 +1,14 @@
-ref_list = [
-    "CBOE_Volatility_Index",
-    "DAX_Futures",
-    "EUR_GBP",
-    "EUR_USD",
-    "GBP_USD",
-    "GOLD_USD",
-    "JAPAN255_Futures",
-    "NQ100_Futures",
-    "OIL_USD",
-    "UK100_Futures",
-    "US30_Futures",
-    "USD_JPY",
-    "USSPX500_Futures",
-    "AUD_JPY",
-    "AUD_USD",
-    "CAD_JPY",
-    "CHF_JPY",
-    "COPPER_USD",
-    "EUR_AUD",
-    "EUR_CHF",
-    "EUR_JPY",
-    "EUR_NZD",
-    "GBP_AUD",
-    "GBP_CHF",
-    "GBP_JPY",
-    "NZD_JPY",
-    "NZD_USD",
-    "PLATINUM_USD",
-    "SILVER_USD",
-    "TRY_JPY",
-    "USD_CAD",
-    "USD_CHF",
-    "ZAR_JPY",
-]
-
-ref_list_test = [
+# 使う銘柄。ref（シグナル源）と target（売買対象）の両方に使う。
+# 切り替えるときはこのリストを書き換える。
+# 参考: FX全銘柄 / 株の一覧は、下の [symbols] にすべて定義してある。
+symbol_names = [
     "EUR_GBP",
     "GBP_CHF",
     "EUR_CHF",
-    "GBP_AUD",
-    "EUR_AUD",
 ]
 
-ref_list_stock = [
-    "1963_日揮ホールディングス",
-    "3407_旭化成",
-    "5401_日本製鉄",
-    "6752_パナソニック",
-    "9501_東京電力ホールディングス",
-    "9502_中部電力",
-    "9503_関西電力",
-    "9504_中国電力",
-    "9505_北陸電力",
-    "9506_東北電力",
-    "9507_四国電力",
-    "9508_九州電力",
-    "9509_北海道電力",
+# ref には使うが target からは外す銘柄（コストが高い、取引困難など）。
+exclude_names = [
 ]
 
 signal_type_list = [
@@ -156,16 +109,20 @@ stoch = 50.0
 # swap: ロング保有時の日次スワップ率（％／日）。プラスならロングで受け取り、
 #       ショートは符号が反転する（売買が対称なブローカーを想定）。
 #       省略すると 0（株の現物や、値が不明な指数など）。
-[target_list]
-#CBOE_Volatility_Index = { cost = 0.09 }
+
+# 銘柄の定義は、ここ1箇所だけに書く。
+# cost: 仕掛け時に1回だけ引く片道コスト（値幅）
+# swap: ロング保有時の日次スワップ率（％／日）。プラスならロングで受け取り、
+#       ショートは符号が反転する。省略すると 0。
+[symbols]
 DAX_Futures = { cost = 3.0 }
 EUR_GBP = { cost = 0.0001, swap = -0.00399 }
 EUR_USD = { cost = 0.00003, swap = -0.00367 }
 GBP_USD = { cost = 0.0001, swap = -0.00028 }
-#GOLD_USD = { cost = 1.0 }
+GOLD_USD = { cost = 1.0 }
 JAPAN255_Futures = { cost = 10.0 }
 NQ100_Futures = { cost = 0.5 }
-#OIL_USD = { cost = 0.03 }
+OIL_USD = { cost = 0.03 }
 UK100_Futures = { cost = 3.0 }
 US30_Futures = { cost = 4.0 }
 USD_JPY = { cost = 0.002, swap = 0.00985 }
@@ -174,7 +131,7 @@ AUD_JPY = { cost = 0.005, swap = 0.00983 }
 AUD_USD = { cost = 0.00004, swap = 0.00106 }
 CAD_JPY = { cost = 0.006, swap = 0.0 }
 CHF_JPY = { cost = 0.008, swap = -0.00171 }
-#COPPER_USD = { cost = 0.02 }
+COPPER_USD = { cost = 0.02 }
 EUR_AUD = { cost = 0.00015, swap = -0.0055 }
 EUR_CHF = { cost = 0.00015, swap = 0.0055 }
 EUR_JPY = { cost = 0.004, swap = 0.00431 }
@@ -184,21 +141,13 @@ GBP_CHF = { cost = 0.00028, swap = 0.00994 }
 GBP_JPY = { cost = 0.009, swap = 0.00813 }
 NZD_JPY = { cost = 0.007, swap = 0.00466 }
 NZD_USD = { cost = 0.00016, swap = -0.0035 }
-#PLATINUM_USD = { cost = 5.0 }
-#SILVER_USD = { cost = 0.1 }
+PLATINUM_USD = { cost = 5.0 }
+SILVER_USD = { cost = 0.1 }
 TRY_JPY = { cost = 0.014, swap = 0.07375 }
-#USD_CAD = { cost = 0.0016 }
+USD_CAD = { cost = 0.0016, swap = 0.00985 }
 USD_CHF = { cost = 0.00016, swap = 0.00873 }
-#ZAR_JPY = { cost = 0.009 }
+ZAR_JPY = { cost = 0.009, swap = 0.1332  }
 
-[target_list_test]
-EUR_GBP = { cost = 0.0001, swap = -0.00399 }
-GBP_CHF = { cost = 0.00028, swap = 0.00994 }
-EUR_CHF = { cost = 0.00015, swap = 0.0055 }
-GBP_AUD = { cost = 0.00015, swap = -0.00148 }
-EUR_AUD = { cost = 0.00015, swap = -0.0055 }
-
-[target_list_stock]
 "1963_日揮ホールディングス" = { cost = 0 }
 "3407_旭化成" = { cost = 0 }
 "5401_日本製鉄" = { cost = 0 }
