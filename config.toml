@@ -1,6 +1,12 @@
 # 使う銘柄。ref（シグナル源）と target（売買対象）の両方に使う。
-# 切り替えるときはこのリストを書き換える。
-# 参考: FX全銘柄 / 株の一覧は、下の [symbols] にすべて定義してある。
+# symbol_groups でまとめて選ぶ（"fx" / "index" / "commodity" / "stock"）。
+# symbol_names で個別に追加もできる（両方書けば合算される）。
+# 銘柄の定義はすべて下の [symbols] にあり、グループもそこで宣言する。
+symbol_groups = [
+    #"fx",
+]
+
+# グループに含まれない銘柄を個別に足したいときに使う。
 symbol_names = [
     "EUR_GBP",
     "GBP_CHF",
@@ -115,50 +121,49 @@ stoch = 50.0
 # swap: ロング保有時の日次スワップ率（％／日）。プラスならロングで受け取り、
 #       ショートは符号が反転する。省略すると 0。
 [symbols]
-#CBOE_Volatility_Index = { cost = 0.09 }
-DAX_Futures = { cost = 3.0 }
-EUR_GBP = { cost = 0.0001, swap = -0.00399 }
-EUR_USD = { cost = 0.00003, swap = -0.00367 }
-GBP_USD = { cost = 0.0001, swap = -0.00028 }
-GOLD_USD = { cost = 1.0 }
-JAPAN255_Futures = { cost = 10.0 }
-NQ100_Futures = { cost = 0.5 }
-OIL_USD = { cost = 0.03 }
-UK100_Futures = { cost = 3.0 }
-US30_Futures = { cost = 4.0 }
-USD_JPY = { cost = 0.002, swap = 0.00985 }
-USSPX500_Futures = { cost = 2.0 }
-AUD_JPY = { cost = 0.005, swap = 0.00983 }
-AUD_USD = { cost = 0.00004, swap = 0.00106 }
-CAD_JPY = { cost = 0.006, swap = 0.0 }
-CHF_JPY = { cost = 0.008, swap = -0.00171 }
-COPPER_USD = { cost = 0.02 }
-EUR_AUD = { cost = 0.00015, swap = -0.0055 }
-EUR_CHF = { cost = 0.00015, swap = 0.0055 }
-EUR_JPY = { cost = 0.004, swap = 0.00431 }
-EUR_NZD = { cost = 0.00029 }
-GBP_AUD = { cost = 0.00015, swap = -0.00148 }
-GBP_CHF = { cost = 0.00028, swap = 0.00994 }
-GBP_JPY = { cost = 0.009, swap = 0.00813 }
-NZD_JPY = { cost = 0.007, swap = 0.00466 }
-NZD_USD = { cost = 0.00016, swap = -0.0035 }
-PLATINUM_USD = { cost = 5.0 }
-SILVER_USD = { cost = 0.1 }
-TRY_JPY = { cost = 0.014, swap = 0.07375 }
-USD_CAD = { cost = 0.0016, swap = 0.00985 }
-USD_CHF = { cost = 0.00016, swap = 0.00873 }
-ZAR_JPY = { cost = 0.009, swap = 0.1332  }
-
-"1963_日揮ホールディングス" = { cost = 0 }
-"3407_旭化成" = { cost = 0 }
-"5401_日本製鉄" = { cost = 0 }
-"6752_パナソニック" = { cost = 0 }
-"9501_東京電力ホールディングス" = { cost = 0 }
-"9502_中部電力" = { cost = 0 }
-"9503_関西電力" = { cost = 0 }
-"9504_中国電力" = { cost = 0 }
-"9505_北陸電力" = { cost = 0 }
-"9506_東北電力" = { cost = 0 }
-"9507_四国電力" = { cost = 0 }
-"9508_九州電力" = { cost = 0 }
-"9509_北海道電力" = { cost = 0 }
+EUR_GBP = { cost = 0.0001, swap = -0.00399, group = "fx" }
+EUR_USD = { cost = 0.00003, swap = -0.00367, group = "fx" }
+GBP_USD = { cost = 0.0001, swap = -0.00028, group = "fx" }
+USD_JPY = { cost = 0.002, swap = 0.00985, group = "fx" }
+AUD_JPY = { cost = 0.005, swap = 0.00983, group = "fx" }
+AUD_USD = { cost = 0.00004, swap = 0.00106, group = "fx" }
+CAD_JPY = { cost = 0.006, swap = 0.0, group = "fx" }
+CHF_JPY = { cost = 0.008, swap = -0.00171, group = "fx" }
+EUR_AUD = { cost = 0.00015, swap = -0.0055, group = "fx" }
+EUR_CHF = { cost = 0.00015, swap = 0.0055, group = "fx" }
+EUR_JPY = { cost = 0.004, swap = 0.00431, group = "fx" }
+EUR_NZD = { cost = 0.00029, group = "fx" }
+GBP_AUD = { cost = 0.00015, swap = -0.00148, group = "fx" }
+GBP_CHF = { cost = 0.00028, swap = 0.00994, group = "fx" }
+GBP_JPY = { cost = 0.009, swap = 0.00813, group = "fx" }
+NZD_JPY = { cost = 0.007, swap = 0.00466, group = "fx" }
+NZD_USD = { cost = 0.00016, swap = -0.0035, group = "fx" }
+TRY_JPY = { cost = 0.014, swap = 0.07375, group = "fx" }
+USD_CAD = { cost = 0.0016, swap = 0.00985, group = "fx" }
+USD_CHF = { cost = 0.00016, swap = 0.00873, group = "fx" }
+ZAR_JPY = { cost = 0.009, swap = 0.1332, group = "fx" }
+CBOE_Volatility_Index = { cost = 0.09, group = "index" }
+DAX_Futures = { cost = 3.0, group = "index" }
+JAPAN255_Futures = { cost = 10.0, group = "index" }
+NQ100_Futures = { cost = 0.5, group = "index" }
+UK100_Futures = { cost = 3.0, group = "index" }
+US30_Futures = { cost = 4.0, group = "index" }
+USSPX500_Futures = { cost = 2.0, group = "index" }
+COPPER_USD = { cost = 0.02, group = "commodity" }
+GOLD_USD = { cost = 1.0, group = "commodity" }
+OIL_USD = { cost = 0.03, group = "commodity" }
+PLATINUM_USD = { cost = 5.0, group = "commodity" }
+SILVER_USD = { cost = 0.1, group = "commodity" }
+"1963_日揮ホールディングス" = { cost = 0, group = "stock" }
+"3407_旭化成" = { cost = 0, group = "stock" }
+"5401_日本製鉄" = { cost = 0, group = "stock" }
+"6752_パナソニック" = { cost = 0, group = "stock" }
+"9501_東京電力ホールディングス" = { cost = 0, group = "stock" }
+"9502_中部電力" = { cost = 0, group = "stock" }
+"9503_関西電力" = { cost = 0, group = "stock" }
+"9504_中国電力" = { cost = 0, group = "stock" }
+"9505_北陸電力" = { cost = 0, group = "stock" }
+"9506_東北電力" = { cost = 0, group = "stock" }
+"9507_四国電力" = { cost = 0, group = "stock" }
+"9508_九州電力" = { cost = 0, group = "stock" }
+"9509_北海道電力" = { cost = 0, group = "stock" }

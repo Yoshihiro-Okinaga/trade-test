@@ -12,6 +12,41 @@ import backtest_config
 MAX_WORKERS = min(32, os.cpu_count() or 1)  # 並列プロセス数
 ROUND_DIGITS = 9                            # 小数点以下の桁数（四捨五入）
 
+# パラメータ列は成績列と違い、9桁も要らない（1.000000000 は読みにくい）。
+# かといって一律に整数化もできない（0.5 刻みなら 0.5 / 1.0、
+# 0.01 刻みなら 1.00 と出したい）。そこで列に実際に現れる値から
+# 必要な小数桁数を求め、その桁で揃えて文字列にしておく。
+# 文字列にすると to_csv の float_format の対象外になるため、
+# 成績列の 9 桁指定はそのまま保たれる。
+PARAM_COLUMNS = ["threshold_width"]
+
+
+def _decimals_needed(values, limit=6):
+    """値をすべて表現するのに必要な小数桁数を返す。"""
+    needed = 0
+    for value in values:
+        if pd.isna(value):
+            continue
+        for digits in range(limit + 1):
+            if round(float(value), digits) == float(value):
+                needed = max(needed, digits)
+                break
+        else:
+            needed = limit
+    return needed
+
+
+def format_param_columns(df):
+    """パラメータ列を、値に見合った桁数の文字列に変換する。"""
+    for column in PARAM_COLUMNS:
+        if column not in df.columns:
+            continue
+        digits = _decimals_needed(df[column])
+        df[column] = df[column].map(
+            lambda v: "" if pd.isna(v) else f"{float(v):.{digits}f}"
+        )
+    return df
+
 def main():
     start_time = datetime.datetime.now()
     print(f"ワーカー数: {MAX_WORKERS}")
@@ -71,6 +106,7 @@ def main():
         na_position="last",
     ).reset_index(drop=True)
     df_ranking.insert(0, "rank", df_ranking.index + 1)
+    df_ranking = format_param_columns(df_ranking)
     df_ranking.to_csv(RANKING_OUTPUT_FILE, index=False, encoding="utf-8", float_format=f"%.{ROUND_DIGITS}f",)
 
     print("\n=== 総合ランキング ===")

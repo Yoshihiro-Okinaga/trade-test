@@ -4,23 +4,55 @@ from dataclasses import dataclass, field
 
 class BackTestConfig:
     def __init__(self, config_data):
-        # 銘柄の定義（コスト・スワップ）は symbols に1箇所だけ書く。
-        # どれを使うかは symbol_names で選び、target から外したいものだけ
-        # exclude_names に書く（ref には含まれるが target にはならない）。
+        # 銘柄の定義（コスト・スワップ・グループ）は symbols に1箇所だけ書く。
+        # 使う銘柄は symbol_groups（"fx" などのまとまり）か symbol_names
+        # （個別指定）で選ぶ。両方書けば合算される。
+        # target から外したいものだけ exclude_names に書く
+        # （ref には含まれるが target にはならない）。
         self.symbols: dict = config_data.get("symbols", {})
+        self.symbol_groups: List[str] = config_data.get("symbol_groups", [])
         self.symbol_names: List[str] = config_data.get("symbol_names", [])
         self.exclude_names: List[str] = config_data.get("exclude_names", [])
-        # ref は指定された全銘柄、target は除外を引いたもの。
-        excluded = set(self.exclude_names)
-        self.ref_list: List[str] = list(self.symbol_names)
-        self.target_list: List[str] = [
-            name for name in self.symbol_names if name not in excluded
+
+        # 存在しないグループ名を指定した場合、黙って空になると原因が分からないので
+        # 先に知らせる（タイプミス対策）。
+        defined_groups = {
+            value.get("group") for value in self.symbols.values()
+            if isinstance(value, dict) and value.get("group")
+        }
+        unknown_groups = [g for g in self.symbol_groups if g not in defined_groups]
+        if unknown_groups:
+            raise ValueError(
+                "symbolsに存在しないグループです: " + ", ".join(unknown_groups)
+                + "（定義済み: " + ", ".join(sorted(defined_groups)) + "）"
+            )
+
+        # グループ指定を銘柄名に展開する。symbols での定義順を保つ。
+        wanted_groups = set(self.symbol_groups)
+        selected: List[str] = [
+            name for name, value in self.symbols.items()
+            if isinstance(value, dict) and value.get("group") in wanted_groups
         ]
+        # 個別指定を後ろに足す（グループで既に入っているものは重複させない）
+        for name in self.symbol_names:
+            if name not in selected:
+                selected.append(name)
+
+        if not selected:
+            raise ValueError("symbol_groups か symbol_names で銘柄を指定してください。")
+
         # symbols に定義がない銘柄は、コスト0として黙って計算されてしまうため、
         # 起動時に気づけるようにする。
-        undefined = [name for name in self.symbol_names if name not in self.symbols]
+        undefined = [name for name in selected if name not in self.symbols]
         if undefined:
             raise ValueError("symbolsに定義がない銘柄があります: " + ", ".join(undefined))
+
+        # ref は選ばれた全銘柄、target は除外を引いたもの。
+        excluded = set(self.exclude_names)
+        self.ref_list: List[str] = selected
+        self.target_list: List[str] = [n for n in selected if n not in excluded]
+        if not self.target_list:
+            raise ValueError("exclude_namesで全銘柄が除外されています。")
         self.signal_type_list: List[str] = config_data.get("signal_type_list", [])
         self.ref_lag_days_list: List[int] = config_data.get("ref_lag_days_list", [])
         self.hold_days_list: List[int] = config_data.get("hold_days_list", [])
