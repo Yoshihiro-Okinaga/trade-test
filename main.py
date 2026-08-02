@@ -3,10 +3,11 @@ import os
 import datetime
 import tomllib
 import pandas as pd
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import backtest
+import market_data
 import backtest_config
 
 MAX_WORKERS = min(32, os.cpu_count() or 1)  # 並列プロセス数
@@ -79,25 +80,34 @@ def main():
     ranking_results = []
     total_tasks = len(tasks)
 
-    if config.use_process_pool:
-        with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = [
-                executor.submit(backtest.run_one, config, task)
-                for task in tasks
-            ]
+    # 指標はタスクごとに計算し直すと同じ計算を何万回も繰り返すことになる。
+    # 必要な組み合わせは銘柄×パラメータのぶんだけなので、先にまとめて作る。
+    print("指標を事前計算しています...", flush=True)
+    ref_cache, target_cache = market_data.build_caches(config)
+    print(f"事前計算 完了（ref {len(ref_cache)} 件 / target {len(target_cache)} 件）")
 
-            for completed_count, future in enumerate(
-                as_completed(futures),
+    if config.use_process_pool:
+        # config と指標キャッシュは initializer で各ワーカーに1回だけ渡す。
+        # タスクごとに送ると転送だけで時間を食ってしまう。
+        # map(chunksize=...) でまとめて送り、往復回数も減らす。
+        chunksize = max(1, total_tasks // (MAX_WORKERS * 8))
+        with ProcessPoolExecutor(
+            max_workers=MAX_WORKERS,
+            initializer=backtest.init_worker,
+            initargs=(config, ref_cache, target_cache),
+        ) as executor:
+            for completed_count, result in enumerate(
+                executor.map(backtest.run_one_shared, tasks, chunksize=chunksize),
                 start=1,
             ):
-                result = future.result()
-
                 if result is not None:
                     ranking_results.append(result)
 
                 print(f"\rタスク完了: {completed_count}/{total_tasks}", end="", flush=True)
 
     else:
+        # 逐次実行でも、ワーカーと同じ場所にキャッシュを置いてから回す。
+        backtest.init_worker(config, ref_cache, target_cache)
         for completed_count, task in enumerate(tasks, start=1):
             result = backtest.run_one(config, task)
 

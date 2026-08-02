@@ -21,14 +21,11 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
         return None, None, None
 
 
-    ref_market_data = MarketData(ref_name)
-    target_market_data = MarketData(target_name)
-
-    ref_market_data.calc_technical_indicators(config, ref_name, target_name, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
-    target_market_data.calc_technical_indicators(config, ref_name, target_name, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
-
-    ref = ref_market_data.ref
-    target = target_market_data.target
+    # 事前計算しておいた指標を取り出す。タスクごとに計算し直さない。
+    # このあと ref/target に列を追加するので、キャッシュ本体を汚さないよう
+    # コピーを受け取る。
+    ref = _REF_CACHE[(ref_name, ref_lag_days, start_days, sma_period)].copy()
+    target = _TARGET_CACHE[(target_name, hold_days)].copy()
 
     other_message = ""
     
@@ -202,6 +199,28 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     df_results.attrs["year_summary"] = year_summary
 
     return df_results, corr, other_message
+
+
+# ワーカープロセスごとに共有する config と事前計算済みの指標。
+# タスクごとに送ると転送コストがかさむため、
+# ProcessPoolExecutor の initializer で1回だけ渡してここに置く。
+_WORKER_CONFIG = None
+_REF_CACHE = {}
+_TARGET_CACHE = {}
+
+
+def init_worker(config, ref_cache, target_cache):
+    """ワーカー起動時に config と指標キャッシュを受け取って保持する。"""
+    global _WORKER_CONFIG, _REF_CACHE, _TARGET_CACHE
+    _WORKER_CONFIG = config
+    _REF_CACHE = ref_cache
+    _TARGET_CACHE = target_cache
+
+
+def run_one_shared(task):
+    """initializer で渡された config を使って run_one を呼ぶ。
+    map に渡せるよう引数を task だけにしてある。"""
+    return run_one(_WORKER_CONFIG, task)
 
 
 def run_one(config, task):

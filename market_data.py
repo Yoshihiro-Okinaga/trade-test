@@ -89,18 +89,23 @@ class MarketData:
         return DATA_CACHE[path].copy()
 
 
-    def calc_technical_indicators(self, config : BackTestConfig, ref_name, target_name, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period):
-
-        self.ref = self.df.copy()
-        self.target = self.df.copy()
-        ref = self.ref
-        target = self.target
-
+    def calc_target_prices(self, hold_days):
+        """売買対象としての決済価格を計算して返す。hold_days にだけ依存する。"""
+        target = self.df.copy()
         target["target_base"] = target["終値"]
         target["target_exit"] = target["target_base"].shift(-hold_days)
         target["exit_date"] = target["日付"].shift(-hold_days)
         target["target_change"] = target["target_exit"] - target["target_base"]
         target["target_change_pct"] = target["target_change"] / target["target_base"] * 100
+        self.target = target
+        return target
+
+
+    def calc_ref_signals(self, ref_lag_days, start_days, sma_period):
+        """シグナル源としての指標を計算して返す。
+        依存するのは ref_lag_days / start_days / sma_period の3つだけ。
+        閾値や counter_trade は売買判定で使うもので、ここでは使わない。"""
+        ref = self.df.copy()
 
         # === Ref の騰落率（何日前比）を計算 ===
         ref["ref_base"] = ref["終値"]
@@ -195,3 +200,33 @@ class MarketData:
         streak_group = (diff_sign != diff_sign.shift(1)).cumsum()
         streak_length = diff_sign.groupby(streak_group).cumcount() + 1
         ref["ref_signal_streak"] = (streak_length * diff_sign).shift(start_days)
+
+        self.ref = ref
+        return ref
+
+
+def build_caches(config):
+    """必要な指標を、パラメータの組み合わせぶんだけ事前に計算する。
+
+    指標は銘柄だけでなくパラメータにも依存するので、キーにパラメータを含める。
+    銘柄名だけをキーにすると、別のパラメータで計算した結果を誤って使い回して
+    しまうため注意。
+
+    タスクごとに計算し直すと同じ計算を何万回も繰り返すことになるが、
+    実際に必要な組み合わせは
+      ref    : 銘柄 × ref_lag_days × start_days × sma_period
+      target : 銘柄 × hold_days
+    だけなので、ここでまとめて作っておけば済む。
+    """
+    ref_cache = {}
+    target_cache = {}
+    for name in config.ref_list:
+        data = MarketData(name)
+        for ref_lag_days in config.ref_lag_days_list:
+            for start_days in config.start_days_list:
+                for sma_period in config.sma_period_list:
+                    key = (name, ref_lag_days, start_days, sma_period)
+                    ref_cache[key] = data.calc_ref_signals(ref_lag_days, start_days, sma_period)
+        for hold_days in config.hold_days_list:
+            target_cache[(name, hold_days)] = data.calc_target_prices(hold_days)
+    return ref_cache, target_cache
