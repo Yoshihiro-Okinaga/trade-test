@@ -1,4 +1,5 @@
 import operator
+import time
 import pandas as pd
 from pathlib import Path
 from enum import StrEnum
@@ -386,6 +387,8 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
 
 def run_one(config, task):
     """ワーカープロセスで実行される単位。集計まで済ませて軽い dict だけ返す。"""
+    task_start = time.perf_counter() if config.output_task_time else None
+
     ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period = task
 
     result_base = {}
@@ -484,5 +487,10 @@ def run_one(config, task):
         "average_short_pct": average_short_pct,
     }
 
-    return result_base | result_sub | period_result
+    result = result_base | result_sub | period_result
+    if config.output_task_time:
+        result["task_elapsed_seconds"] = time.perf_counter() - task_start
+
+    return result
+
 

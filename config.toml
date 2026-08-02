@@ -10,7 +10,7 @@ symbol_groups = [
 symbol_names = [
     "EUR_GBP",
     "GBP_CHF",
-    "EUR_CHF",
+    "AUD_NZD",
 ]
 
 # ref には使うが target からは外す銘柄（コストが高い、取引困難など）。
@@ -79,6 +79,10 @@ trade_code_type = "same"      # "same", "not_same", "all"
 min_trade_count = 30
 use_process_pool = true
 
+# true にすると、各タスクの実行時間（秒）を task_elapsed_seconds 列として
+# CSVに出力する。実行ごとに値が変わるため、Golden作成時はfalseにする。
+output_task_time = false
+
 # 売買判定の閾値（幅）。|signal| がこの値を超えたら売買する。
 # 指標ごとに値のスケールが違うので、指標ごとに設定する。
 # ここに書かない指標は default_threshold_width が使われる。
@@ -126,6 +130,7 @@ EUR_USD = { cost = 0.00003, swap = -0.00367, group = "fx" }
 GBP_USD = { cost = 0.0001, swap = -0.00028, group = "fx" }
 USD_JPY = { cost = 0.002, swap = 0.00985, group = "fx" }
 AUD_JPY = { cost = 0.005, swap = 0.00983, group = "fx" }
+AUD_NZD = { cost = 0.0008, swap = 0.0035, group = "fx" }
 AUD_USD = { cost = 0.00004, swap = 0.00106, group = "fx" }
 CAD_JPY = { cost = 0.006, swap = 0.0, group = "fx" }
 CHF_JPY = { cost = 0.008, swap = -0.00171, group = "fx" }

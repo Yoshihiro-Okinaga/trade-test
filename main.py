@@ -77,20 +77,34 @@ def main():
     ]
 
     ranking_results = []
+    total_tasks = len(tasks)
 
     if config.use_process_pool:
         with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = [executor.submit(backtest.run_one, config, task) for task in tasks]
+            futures = [
+                executor.submit(backtest.run_one, config, task)
+                for task in tasks
+            ]
 
-            for future in as_completed(futures):
+            for completed_count, future in enumerate(
+                as_completed(futures),
+                start=1,
+            ):
                 result = future.result()
+
                 if result is not None:
                     ranking_results.append(result)
+
+                print(f"\rタスク完了: {completed_count}/{total_tasks}", end="", flush=True)
+
     else:
-        for task in tasks:
+        for completed_count, task in enumerate(tasks, start=1):
             result = backtest.run_one(config, task)
+
             if result is not None:
                 ranking_results.append(result)
+
+            print(f"\rタスク完了: {completed_count}/{total_tasks}", end="", flush=True)
 
     df_ranking = pd.DataFrame(ranking_results)
     # t値の降順に並べる。t値は「平均損益がノイズと区別できるか」を測るので、
