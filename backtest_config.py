@@ -1,5 +1,20 @@
 from typing import List, Optional
 from dataclasses import dataclass, field
+from enum import StrEnum
+
+
+# === 設定 ===
+class SignalType(StrEnum):
+    CHANGE = "change"
+    SMA = "sma"
+    BB = "bb"
+    MACD = "macd"
+    RSI = "rsi"
+    DI = "di"
+    #ADX = "adx"
+    STOCH = "stoch"
+    STREAK = "streak"
+
 
 
 class BackTestConfig:
