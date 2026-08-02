@@ -5,16 +5,16 @@
 # symbol_names で個別に追加もできる（両方書けば合算される）。
 # 銘柄の定義はすべて下の [symbols] にあり、グループもそこで宣言する。
 symbol_groups = [
-    #"fx",
+    "fx",
 ]
 
 # グループに含まれない銘柄を個別に足したいときに使う。
 symbol_names = [
-    "EUR_GBP",
-    "GBP_CHF",
-    "AUD_USD",
-    "AUD_NZD",
-    "GBP_USD",
+    #"EUR_GBP",
+    #"GBP_CHF",
+    #"AUD_USD",
+    #"AUD_NZD",
+    #"GBP_USD",
 ]
 
 # ref には使うが target からは外す銘柄（コストが高い、取引困難など）。
@@ -176,3 +176,14 @@ SILVER_USD = { cost = 0.1, group = "commodity" }
 "9507_四国電力" = { cost = 0, group = "stock" }
 "9508_九州電力" = { cost = 0, group = "stock" }
 "9509_北海道電力" = { cost = 0, group = "stock" }
+
+[walkforward]
+train_years = 8            # 学習(選抜)期間の年数
+test_years = 2             # 検証(未知)期間の年数
+step_years = 2             # 前進幅。test_yearsと同じにすると未知期間が重ならない
+mode = "anchored"          # "anchored"(開始固定で拡大) / "rolling"(固定長スライド)
+select_metric = "t_value"  # "t_value" / "average_pct" / "total_pct"
+select_per = "target"      # "target"(銘柄ごと) / "global"(全体)
+select_top_k = 1           # 各グループから選ぶ戦略数
+min_is_trades = 30         # 選抜に必要な学習期間の最小取引数
+min_is_t = 3.5             # 学習期間のt値がこの値未満の銘柄は見送る。0で無効
