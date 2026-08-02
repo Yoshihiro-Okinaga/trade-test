@@ -33,6 +33,8 @@ walk-forward 検証
     出力:
         walkforward_selection.csv  … 各フォールドで何を選び、検証期間でどうだったか
         walkforward_summary.csv    … フォールド別＋全体の未知期間成績
+        walkforward_equity.csv     … 未知トレードを実現日順に連結した累積リターン
+    コンソール: 残存率・未知成績・閾値スキャン・最大ドローダウン
 """
 import os
 import sys
@@ -246,6 +248,138 @@ def read_wf_params(config_data):
     }
 
 
+# ============================================================================
+# エクイティカーブ / 最大ドローダウン / 閾値スキャン
+# ============================================================================
+
+def max_drawdown(cumulative):
+    """累積系列（各点=それまでの損益合計）から最大ドローダウンを返す。
+    戻り値 (max_dd, peak_idx, trough_idx)。max_dd は下落幅で常に非負。"""
+    peak = float("-inf")
+    cur_peak_i = 0
+    max_dd = 0.0
+    mdd_peak = mdd_trough = 0
+    for i, v in enumerate(cumulative):
+        if v > peak:
+            peak = v
+            cur_peak_i = i
+        dd = peak - v
+        if dd > max_dd:
+            max_dd = dd
+            mdd_peak = cur_peak_i
+            mdd_trough = i
+    return max_dd, mdd_peak, mdd_trough
+
+
+def build_equity(trades):
+    """未知トレードを実現日(exit_date)昇順に並べ、profit_pct を加算した累積系列
+    （各取引を等額・非複利で足したエクイティ）と統計を返す。
+    trades: [{"exit_date":..., "entry_date":..., "profit_pct":float, ...}, ...]"""
+    ordered = sorted(trades, key=lambda t: (t["exit_date"], t["entry_date"]))
+    cum = 0.0
+    curve = []
+    for t in ordered:
+        cum += t["profit_pct"]
+        row = dict(t)
+        row["cumulative_pct"] = cum
+        curve.append(row)
+    cumulative = [row["cumulative_pct"] for row in curve]
+    if cumulative:
+        mdd, pk, tr = max_drawdown(cumulative)
+        final = cumulative[-1]
+    else:
+        mdd, pk, tr, final = 0.0, 0, 0, 0.0
+    return curve, {"final_pct": final, "max_dd_pct": mdd,
+                   "peak_idx": pk, "trough_idx": tr, "n": len(curve)}
+
+
+def scan_thresholds(combos, folds, wf, thresholds):
+    """min_is_t を変えながら選抜し直し、未知成績のトレードオフを一覧する。
+    選抜は年別統計だけで行うため再シミュレーションは不要（安価）。"""
+    print("\n=== 閾値スキャン（min_is_t を変えたときの未知成績。再シミュレーション不要）===")
+    print("※ この表を見て閾値を選ぶと OOS への過剰適合になります。分布の構造で決めること。")
+    print(f"{'min_is_t':>9}{'選抜数':>7}{'未知取引':>9}{'未知平均':>10}{'選抜プラス率':>12}")
+    for thr in thresholds:
+        recs = []
+        for fold in folds:
+            recs.extend(select_for_fold(
+                combos, fold, wf["select_metric"], wf["select_per"],
+                wf["select_top_k"], wf["min_is_trades"], thr))
+        n = sum(r["oos_trades"] for r in recs)
+        if n == 0:
+            print(f"{thr:>9.1f}{len(recs):>7}{0:>9}{'—':>10}{'—':>12}")
+            continue
+        s = sum(r["oos_sum"] for r in recs)
+        traded = [r for r in recs if r["oos_trades"] > 0]
+        pos = (sum(1 for r in traded if r["oos_mean_pct"] > 0) / len(traded) * 100
+               if traded else 0.0)
+        print(f"{thr:>9.1f}{len(recs):>7}{int(n):>9}{s / n:>8.3f}%{pos:>11.0f}%")
+
+
+def collect_oos_trades(config, records):
+    """選抜済みの各戦略を再計算し、未知(検証)期間のトレードを日付つきで集める。
+    同じ task が複数フォールドで選ばれることがあるので task 単位で1回だけ計算する。"""
+    import backtest
+    from collections import defaultdict
+
+    by_task = defaultdict(list)
+    for r in records:
+        by_task[r["task"]].append(r)
+
+    trades = []
+    for task, recs in by_task.items():
+        df, _corr, _msg = backtest.calc_trade_results(config, *task)
+        if df is None or df.empty:
+            continue
+        pair = f"{task[1]} ← {task[0]}"
+        for r in recs:
+            ts, te = r["test_start"], r["test_end"]
+            # 選抜と同じ「エントリー年」基準で検証期間を切り出す
+            sub = df[(df["year"] >= ts) & (df["year"] <= te)]
+            for row in sub.itertuples():
+                trades.append({
+                    "exit_date": row.exit_date,
+                    "entry_date": row.entry_date,
+                    "profit_pct": float(row.profit_pct),
+                    "pair": pair,
+                    "test_period": f"{ts}-{te}",
+                })
+    return trades
+
+
+def build_and_write_equity(config, records):
+    try:
+        trades = collect_oos_trades(config, records)
+    except Exception as e:
+        print(f"\nエクイティ計算をスキップしました（{e}）")
+        return
+    if not trades:
+        print("\nエクイティ: 未知トレードが取得できませんでした。")
+        return
+
+    curve, stats = build_equity(trades)
+    eq_path = "walkforward_equity.csv"
+    with open(eq_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["exit_date", "profit_pct", "cumulative_pct", "pair", "test_period"])
+        for row in curve:
+            w.writerow([str(row["exit_date"])[:10], f"{row['profit_pct']:.6f}",
+                        f"{row['cumulative_pct']:.6f}", row["pair"], row["test_period"]])
+
+    n = stats["n"]
+    print("\n=== エクイティ（未知トレードを実現日で連結。等額・非複利＝1取引1単位を加算）===")
+    print(f"未知トレード数       : {n:,}")
+    print(f"累積リターン（合計%） : {stats['final_pct']:+.2f}%")
+    print(f"1取引あたり平均       : {stats['final_pct'] / n:+.4f}%")
+    print(f"最大ドローダウン      : {stats['max_dd_pct']:.2f}%（累積%ポイント）")
+    if stats["max_dd_pct"] > 0:
+        pk = curve[stats["peak_idx"]]
+        tr = curve[stats["trough_idx"]]
+        print(f"  DD区間: {str(pk['exit_date'])[:10]}（山 {pk['cumulative_pct']:+.1f}%）"
+              f" → {str(tr['exit_date'])[:10]}（谷 {tr['cumulative_pct']:+.1f}%）")
+    print(f"出力: {eq_path}")
+
+
 def run():
     import tomllib
     import backtest
@@ -349,6 +483,15 @@ def run():
         print(f"張った枠: {placed} / {max_slots}（見送り {skipped}）")
 
     write_outputs(all_records, folds, wf)
+
+    # --- 閾値スキャン: min_is_t を変えたときの未知成績（再シミュレーション不要）---
+    scan_thresholds(combos, folds, wf,
+                    thresholds=[0.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
+
+    # --- エクイティカーブ＋最大DD（選抜された戦略だけ二次パスで再計算）---
+    # 本体プロセスに指標キャッシュを仕込んでから、選抜済み task を再計算する。
+    backtest.init_worker(config, ref_cache, target_cache)
+    build_and_write_equity(config, all_records)
 
 
 def write_outputs(records, folds, wf):
