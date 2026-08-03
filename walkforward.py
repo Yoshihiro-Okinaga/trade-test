@@ -40,6 +40,7 @@ import os
 import sys
 import math
 import csv
+import datetime
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 
@@ -380,11 +381,79 @@ def build_and_write_equity(config, records):
     print(f"出力: {eq_path}")
 
 
+def write_outputs(records, folds, wf):
+    # 1) 選抜の明細（フォールドごとに何を選び、未知期間でどうだったか）
+    sel_path = "walkforward_selection.csv"
+    with open(sel_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "test_start", "test_end", "train_start", "train_end",
+            "target", "ref", "signal_type", "counter_trade", "use_excess_return",
+            "threshold_width", "ref_lag_days", "hold_days", "start_days", "sma_period",
+            "is_trades", "is_mean_pct", "is_t", "oos_trades", "oos_mean_pct",
+        ])
+        for r in sorted(records, key=lambda x: (x["test_start"], x["target"])):
+            ref, target, sig, counter, excess, width, lag, hold, start, sma = r["task"]
+            writer.writerow([
+                r["test_start"], r["test_end"], r["train_start"], r["train_end"],
+                target, ref, sig, counter, excess, width, lag, hold, start, sma,
+                r["is_trades"], f"{r['is_mean_pct']:.9f}",
+                ("" if math.isnan(r["is_t"]) else f"{r['is_t']:.9f}"),
+                r["oos_trades"],
+                ("" if r["oos_trades"] == 0 else f"{r['oos_mean_pct']:.9f}"),
+            ])
+
+    # 2) フォールド別＋全体の未知期間サマリ
+    per_fold = {}
+    for r in records:
+        key = (r["test_start"], r["test_end"])
+        n, s, ss, w = per_fold.get(key, (0, 0.0, 0.0, 0))
+        per_fold[key] = (n + r["oos_trades"], s + r["oos_sum"],
+                         ss + r["oos_sumsq"], w + r["oos_wins"])
+
+    sum_path = "walkforward_summary.csv"
+    with open(sum_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["test_start", "test_end", "oos_trades",
+                         "oos_mean_pct", "oos_t", "oos_win_rate"])
+        for (ts, te) in sorted(per_fold):
+            n, s, ss, w = per_fold[(ts, te)]
+            mean, std, t = mean_std_t(n, s, ss)
+            win = (w / n * 100) if n else float("nan")
+            writer.writerow([ts, te, n, f"{mean:.9f}",
+                             ("" if math.isnan(t) else f"{t:.9f}"), f"{win:.4f}"])
+
+    # --- コンソールに要点（過大評価がどれだけ剥がれたか）---
+    tot_is_n = sum(r["is_trades"] for r in records)
+    tot_is_sum = sum(r["is_mean_pct"] * r["is_trades"] for r in records)
+    tot_n = sum(r["oos_trades"] for r in records)
+    tot_s = sum(r["oos_sum"] for r in records)
+    tot_ss = sum(r["oos_sumsq"] for r in records)
+    tot_w = sum(r["oos_wins"] for r in records)
+    is_mean = tot_is_sum / tot_is_n if tot_is_n else float("nan")
+    oos_mean, oos_std, oos_t = mean_std_t(tot_n, tot_s, tot_ss)
+    oos_win = (tot_w / tot_n * 100) if tot_n else float("nan")
+
+    print("\n=== walk-forward 結果（未知期間のみ＝実運用相当）===")
+    print(f"選抜回数（フォールド×銘柄）: {len(records)}")
+    print(f"インサンプルで見えていた平均: {is_mean:+.4f}% / 取引")
+    print(f"未知期間の平均              : {oos_mean:+.4f}% / 取引  ← これが実力")
+    if tot_is_n and not math.isnan(is_mean) and abs(is_mean) > 1e-12:
+        keep = oos_mean / is_mean * 100
+        print(f"残存率                     : {keep:.1f}%（100%から遠いほど過剰最適化）")
+    print(f"未知期間の総取引数          : {tot_n:,}")
+    print(f"未知期間の t値              : {oos_t:.3f}（独立仮定の近似）")
+    print(f"未知期間の勝率              : {oos_win:.2f}%")
+    print(f"\n出力: {sel_path} / {sum_path}")
+
+
 def run():
     import tomllib
     import backtest
     import market_data
     import backtest_config
+
+    start_time = datetime.datetime.now()
 
     config_path = Path(__file__).parent / "config.toml"
     try:
@@ -493,71 +562,11 @@ def run():
     backtest.init_worker(config, ref_cache, target_cache)
     build_and_write_equity(config, all_records)
 
-
-def write_outputs(records, folds, wf):
-    # 1) 選抜の明細（フォールドごとに何を選び、未知期間でどうだったか）
-    sel_path = "walkforward_selection.csv"
-    with open(sel_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            "test_start", "test_end", "train_start", "train_end",
-            "target", "ref", "signal_type", "counter_trade", "use_excess_return",
-            "threshold_width", "ref_lag_days", "hold_days", "start_days", "sma_period",
-            "is_trades", "is_mean_pct", "is_t", "oos_trades", "oos_mean_pct",
-        ])
-        for r in sorted(records, key=lambda x: (x["test_start"], x["target"])):
-            ref, target, sig, counter, excess, width, lag, hold, start, sma = r["task"]
-            writer.writerow([
-                r["test_start"], r["test_end"], r["train_start"], r["train_end"],
-                target, ref, sig, counter, excess, width, lag, hold, start, sma,
-                r["is_trades"], f"{r['is_mean_pct']:.9f}",
-                ("" if math.isnan(r["is_t"]) else f"{r['is_t']:.9f}"),
-                r["oos_trades"],
-                ("" if r["oos_trades"] == 0 else f"{r['oos_mean_pct']:.9f}"),
-            ])
-
-    # 2) フォールド別＋全体の未知期間サマリ
-    per_fold = {}
-    for r in records:
-        key = (r["test_start"], r["test_end"])
-        n, s, ss, w = per_fold.get(key, (0, 0.0, 0.0, 0))
-        per_fold[key] = (n + r["oos_trades"], s + r["oos_sum"],
-                         ss + r["oos_sumsq"], w + r["oos_wins"])
-
-    sum_path = "walkforward_summary.csv"
-    with open(sum_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["test_start", "test_end", "oos_trades",
-                         "oos_mean_pct", "oos_t", "oos_win_rate"])
-        for (ts, te) in sorted(per_fold):
-            n, s, ss, w = per_fold[(ts, te)]
-            mean, std, t = mean_std_t(n, s, ss)
-            win = (w / n * 100) if n else float("nan")
-            writer.writerow([ts, te, n, f"{mean:.9f}",
-                             ("" if math.isnan(t) else f"{t:.9f}"), f"{win:.4f}"])
-
-    # --- コンソールに要点（過大評価がどれだけ剥がれたか）---
-    tot_is_n = sum(r["is_trades"] for r in records)
-    tot_is_sum = sum(r["is_mean_pct"] * r["is_trades"] for r in records)
-    tot_n = sum(r["oos_trades"] for r in records)
-    tot_s = sum(r["oos_sum"] for r in records)
-    tot_ss = sum(r["oos_sumsq"] for r in records)
-    tot_w = sum(r["oos_wins"] for r in records)
-    is_mean = tot_is_sum / tot_is_n if tot_is_n else float("nan")
-    oos_mean, oos_std, oos_t = mean_std_t(tot_n, tot_s, tot_ss)
-    oos_win = (tot_w / tot_n * 100) if tot_n else float("nan")
-
-    print("\n=== walk-forward 結果（未知期間のみ＝実運用相当）===")
-    print(f"選抜回数（フォールド×銘柄）: {len(records)}")
-    print(f"インサンプルで見えていた平均: {is_mean:+.4f}% / 取引")
-    print(f"未知期間の平均              : {oos_mean:+.4f}% / 取引  ← これが実力")
-    if tot_is_n and not math.isnan(is_mean) and abs(is_mean) > 1e-12:
-        keep = oos_mean / is_mean * 100
-        print(f"残存率                     : {keep:.1f}%（100%から遠いほど過剰最適化）")
-    print(f"未知期間の総取引数          : {tot_n:,}")
-    print(f"未知期間の t値              : {oos_t:.3f}（独立仮定の近似）")
-    print(f"未知期間の勝率              : {oos_win:.2f}%")
-    print(f"\n出力: {sel_path} / {sum_path}")
+    end_time = datetime.datetime.now()
+    duration = end_time - start_time
+    print(f"実験開始時刻: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"実験終了時刻: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"総実行時間: {duration}")
 
 
 if __name__ == "__main__":
