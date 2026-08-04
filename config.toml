@@ -1,11 +1,12 @@
-# Golden Allはsymbol_groupsはfx, GoldenはEUR_GBP,GBP_CHF,AUD_USD,AUD_NZD,GBP_USD,
+# Golden Allはsymbol_groupsはfx, index, commodity
+# GoldenはEUR_GBP,GBP_CHF,AUD_USD,AUD_NZD,GBP_USD
 
 # 使う銘柄。ref（シグナル源）と target（売買対象）の両方に使う。
 # symbol_groups でまとめて選ぶ（"fx" / "index" / "commodity" / "stock"）。
 # symbol_names で個別に追加もできる（両方書けば合算される）。
 # 銘柄の定義はすべて下の [symbols] にあり、グループもそこで宣言する。
 symbol_groups = [
-    "fx",
+    #"fx",
     #"index",
     #"commodity",
     #"stock",
@@ -13,11 +14,13 @@ symbol_groups = [
 
 # グループに含まれない銘柄を個別に足したいときに使う。
 symbol_names = [
-    #"EUR_GBP",
-    #"GBP_CHF",
-    #"AUD_USD",
-    #"AUD_NZD",
-    #"GBP_USD",
+    "EUR_GBP",
+    "GBP_CHF",
+    "AUD_USD",
+    "AUD_NZD",
+    "GBP_USD",
+    "CAD_JPY",
+    "USD_CHF",
 ]
 
 # ref には使うが target からは外す銘柄（コストが高い、取引困難など）。
