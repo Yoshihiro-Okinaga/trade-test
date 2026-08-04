@@ -157,7 +157,7 @@ TRY_JPY = { cost = 0.014, swap = 0.07375, group = "fx" }
 USD_CAD = { cost = 0.0016, swap = 0.00985, group = "fx" }
 USD_CHF = { cost = 0.00016, swap = 0.00873, group = "fx" }
 ZAR_JPY = { cost = 0.009, swap = 0.1332, group = "fx" }
-CBOE_Volatility_Index = { cost = 0.09, group = "index" }
+#CBOE_Volatility_Index = { cost = 0.09, group = "index" }
 DAX_Futures = { cost = 3.0, group = "index" }
 JAPAN255_Futures = { cost = 10.0, group = "index" }
 NQ100_Futures = { cost = 0.5, group = "index" }
