@@ -1,5 +1,7 @@
 # Golden Allはsymbol_groupsはfx, index, commodity
 # GoldenはEUR_GBP,GBP_CHF,AUD_USD,AUD_NZD,GBP_USD
+# use_excess_returnはtrue, false両方
+# walkforwardはfalseのみ
 
 # 使う銘柄。ref（シグナル源）と target（売買対象）の両方に使う。
 # symbol_groups でまとめて選ぶ（"fx" / "index" / "commodity" / "stock"）。
@@ -19,12 +21,25 @@ symbol_names = [
     "AUD_USD",
     "AUD_NZD",
     "GBP_USD",
-    "CAD_JPY",
-    "USD_CHF",
+    #"CAD_JPY",
+    #"USD_CHF",
 ]
 
 # ref には使うが target からは外す銘柄（コストが高い、取引困難など）。
 exclude_names = [
+]
+
+# 総当たりの代わりに、この (target ← ref) ペアだけを回す。
+# 空/未指定なら従来どおり symbol_groups × symbol_names の総当たり。
+symbol_pairs = [
+    { target = "GBP_USD",       ref = "EUR_GBP" },
+    { target = "AUD_USD",       ref = "EUR_GBP" },
+    { target = "USD_JPY",       ref = "GBP_AUD" },
+    { target = "NQ100_Futures", ref = "US30_Futures" },
+    { target = "AUD_USD",       ref = "SILVER_USD" },
+    { target = "OIL_USD",       ref = "COPPER_USD" },
+    { target = "GOLD_USD",      ref = "GBP_AUD" },
+    { target = "NQ100_Futures", ref = "USD_CAD" },
 ]
 
 signal_type_list = [

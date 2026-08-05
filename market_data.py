@@ -220,13 +220,22 @@ def build_caches(config):
     """
     ref_cache = {}
     target_cache = {}
-    for name in config.ref_list:
+    ref_set = set(config.ref_list)
+    target_set = set(config.target_list)
+    # ref と target で必要な銘柄が異なりうる（symbol_pairs 指定時など）。
+    # union を1回ずつ MarketData 化し、ref_cache は ref_list、
+    # target_cache は target_list から作る。総当たり時は target_list ⊆ ref_list
+    # なので、作られるキーは従来の必要ぶんと一致し、出力は変わらない。
+    all_names = list(dict.fromkeys(list(config.ref_list) + list(config.target_list)))
+    for name in all_names:
         data = MarketData(name)
-        for ref_lag_days in config.ref_lag_days_list:
-            for start_days in config.start_days_list:
-                for sma_period in config.sma_period_list:
-                    key = (name, ref_lag_days, start_days, sma_period)
-                    ref_cache[key] = data.calc_ref_signals(ref_lag_days, start_days, sma_period)
-        for hold_days in config.hold_days_list:
-            target_cache[(name, hold_days)] = data.calc_target_prices(hold_days)
+        if name in ref_set:
+            for ref_lag_days in config.ref_lag_days_list:
+                for start_days in config.start_days_list:
+                    for sma_period in config.sma_period_list:
+                        key = (name, ref_lag_days, start_days, sma_period)
+                        ref_cache[key] = data.calc_ref_signals(ref_lag_days, start_days, sma_period)
+        if name in target_set:
+            for hold_days in config.hold_days_list:
+                target_cache[(name, hold_days)] = data.calc_target_prices(hold_days)
     return ref_cache, target_cache

@@ -216,8 +216,7 @@ def build_tasks(config):
     return [
         (ref_name, target_name, signal_type, counter_trade, use_excess_return,
          threshold_width, ref_lag_days, hold_days, start_days, sma_period)
-        for ref_name in config.ref_list
-        for target_name in config.target_list
+        for ref_name, target_name in config.iter_ref_target()
         for signal_type in config.signal_type_list
         for counter_trade in config.counter_trade
         for use_excess_return in config.use_excess_return

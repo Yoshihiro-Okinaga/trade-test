@@ -42,32 +42,69 @@ class BackTestConfig:
                 + "（定義済み: " + ", ".join(sorted(defined_groups)) + "）"
             )
 
-        # グループ指定を銘柄名に展開する。symbols での定義順を保つ。
-        wanted_groups = set(self.symbol_groups)
-        selected: List[str] = [
-            name for name, value in self.symbols.items()
-            if isinstance(value, dict) and value.get("group") in wanted_groups
-        ]
-        # 個別指定を後ろに足す（グループで既に入っているものは重複させない）
-        for name in self.symbol_names:
-            if name not in selected:
-                selected.append(name)
+        # --- ペア名指し（検証・運用用）を最優先で解釈する ------------------
+        # symbol_pairs があれば「そのペアだけ」を回す（総当たりしない）。
+        # 各要素は { target = "...", ref = "..." } のテーブル形式を推奨
+        # （順序の曖昧さを排除）。[target, ref] の2要素配列も許容する。
+        # 空/未指定なら従来どおり symbol_groups × symbol_names の総当たり。
+        raw_pairs = config_data.get("symbol_pairs", [])
+        self.symbol_pairs: List[tuple] = []
+        for p in raw_pairs:
+            if isinstance(p, dict):
+                target_name, ref_name = p.get("target"), p.get("ref")
+            else:  # [target, ref] の2要素配列
+                if len(p) != 2:
+                    raise ValueError(f"symbol_pairs の要素が不正です: {p!r}")
+                target_name, ref_name = p[0], p[1]
+            if target_name is None or ref_name is None:
+                raise ValueError(
+                    f"symbol_pairs の要素には target と ref が必要です: {p!r}"
+                )
+            for name in (target_name, ref_name):
+                if name not in self.symbols:
+                    raise ValueError(f"symbol_pairs に未定義の銘柄があります: {name}")
+            self.symbol_pairs.append((ref_name, target_name))  # task順 (ref, target)
 
-        if not selected:
-            raise ValueError("symbol_groups か symbol_names で銘柄を指定してください。")
+        if self.symbol_pairs:
+            # 名指しモード: キャッシュ生成と検証がそのまま効くよう ref/target を絞る。
+            # 定義順ではなく登場順で一意化する。
+            self.ref_list: List[str] = list(
+                dict.fromkeys(r for r, t in self.symbol_pairs)
+            )
+            self.target_list: List[str] = list(
+                dict.fromkeys(t for r, t in self.symbol_pairs)
+            )
+        else:
+            # グループ指定を銘柄名に展開する。symbols での定義順を保つ。
+            wanted_groups = set(self.symbol_groups)
+            selected: List[str] = [
+                name for name, value in self.symbols.items()
+                if isinstance(value, dict) and value.get("group") in wanted_groups
+            ]
+            # 個別指定を後ろに足す（グループで既に入っているものは重複させない）
+            for name in self.symbol_names:
+                if name not in selected:
+                    selected.append(name)
 
-        # symbols に定義がない銘柄は、コスト0として黙って計算されてしまうため、
-        # 起動時に気づけるようにする。
-        undefined = [name for name in selected if name not in self.symbols]
-        if undefined:
-            raise ValueError("symbolsに定義がない銘柄があります: " + ", ".join(undefined))
+            if not selected:
+                raise ValueError(
+                    "symbol_pairs か symbol_groups か symbol_names で銘柄を指定してください。"
+                )
 
-        # ref は選ばれた全銘柄、target は除外を引いたもの。
-        excluded = set(self.exclude_names)
-        self.ref_list: List[str] = selected
-        self.target_list: List[str] = [n for n in selected if n not in excluded]
-        if not self.target_list:
-            raise ValueError("exclude_namesで全銘柄が除外されています。")
+            # symbols に定義がない銘柄は、コスト0として黙って計算されてしまうため、
+            # 起動時に気づけるようにする。
+            undefined = [name for name in selected if name not in self.symbols]
+            if undefined:
+                raise ValueError(
+                    "symbolsに定義がない銘柄があります: " + ", ".join(undefined)
+                )
+
+            # ref は選ばれた全銘柄、target は除外を引いたもの。
+            excluded = set(self.exclude_names)
+            self.ref_list = selected
+            self.target_list = [n for n in selected if n not in excluded]
+            if not self.target_list:
+                raise ValueError("exclude_namesで全銘柄が除外されています。")
         self.signal_type_list: List[str] = config_data.get("signal_type_list", [])
         self.ref_lag_days_list: List[int] = config_data.get("ref_lag_days_list", [])
         self.hold_days_list: List[int] = config_data.get("hold_days_list", [])
@@ -109,6 +146,16 @@ class BackTestConfig:
         # それぞれの average_pct と trade_count を列として出力する。
         # 空リストなら期間別の集計をしない。
         self.period_years: List[int] = config_data.get("period_years", [])
+
+    def iter_ref_target(self):
+        """(ref, target) を列挙する。
+        symbol_pairs があればそのペアだけ、無ければ ref_list × target_list の総当たり。"""
+        if self.symbol_pairs:
+            yield from self.symbol_pairs
+        else:
+            for ref_name in self.ref_list:
+                for target_name in self.target_list:
+                    yield (ref_name, target_name)
 
     def cost_of(self, target_name: str) -> float:
         """銘柄の売買コスト（値幅）を返す。
