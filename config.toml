@@ -211,3 +211,4 @@ select_per = "target"      # "target"(銘柄ごと) / "global"(全体)
 select_top_k = 1           # 各グループから選ぶ戦略数
 min_is_trades = 30         # 選抜に必要な学習期間の最小取引数
 min_is_t = 3.5             # 学習期間のt値がこの値未満の銘柄は見送る。0で無効
+is_t_halflife = 4.0        # 0.0=無効(従来と完全一致)。4〜6 など入れると直近重視で選抜。
