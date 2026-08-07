@@ -64,14 +64,13 @@ def main():
     RANKING_OUTPUT_FILE_FULL = "trade_ranking_full.csv"
 
     tasks = [
-        (ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
+        (ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period)
         for ref_name, target_name in config.iter_ref_target()
         for signal_type in config.signal_type_list
         for counter_trade in config.counter_trade
         for use_excess_return in config.use_excess_return
         # 閾値は指標ごとにスケールが違うので、指標ごとの候補リストを展開する
         for threshold_width in config.widths_of(signal_type)
-        for ref_lag_days in config.ref_lag_days_list
         for hold_days in config.hold_days_list
         for start_days in config.start_days_list
         for sma_period in config.sma_period_list
@@ -124,8 +123,8 @@ def main():
     # 全パラメータをタイブレークに使い、安定ソートで行順を決定的にする。
     df_ranking = df_ranking.sort_values(
         ["t_value", "target", "ref", "signal_type", "counter_trade", "use_excess_return",
-         "threshold_width", "ref_lag_days", "hold_days", "start_days", "sma_period"],
-        ascending=[False, True, True, True, True, True, True, True, True, True, True],
+         "threshold_width", "hold_days", "start_days", "sma_period"],
+        ascending=[False, True, True, True, True, True, True, True, True, True],
         kind="mergesort",
         na_position="last",
     ).reset_index(drop=True)

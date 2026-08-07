@@ -7,9 +7,7 @@ from backtest_config import BackTestConfig, SignalType
 from market_data import MarketData
 
 
-def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period):
-    if ref_lag_days < 1:
-        raise ValueError("ref_lag_daysは1以上を指定してください。")
+def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period):
     if hold_days < 1:
         raise ValueError("hold_daysは1以上を指定してください。")
     if start_days < 1:
@@ -24,7 +22,7 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     # 事前計算しておいた指標を取り出す。タスクごとに計算し直さない。
     # このあと ref/target に列を追加するので、キャッシュ本体を汚さないよう
     # コピーを受け取る。
-    ref = _REF_CACHE[(ref_name, ref_lag_days, start_days, sma_period)].copy()
+    ref = _REF_CACHE[(ref_name, start_days, sma_period)].copy()
     target = _TARGET_CACHE[(target_name, hold_days)].copy()
 
     other_message = ""
@@ -227,10 +225,10 @@ def run_one(config, task):
     """ワーカープロセスで実行される単位。集計まで済ませて軽い dict だけ返す。"""
     task_start = time.perf_counter() if config.output_task_time else None
 
-    ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period = task
+    ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period = task
 
     result_base = {}
-    df_results, corr, other_message = calc_trade_results(config, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
+    df_results, corr, other_message = calc_trade_results(config, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period)
     if corr is not None:
         result_base = {
             "target": target_name,
@@ -239,7 +237,6 @@ def run_one(config, task):
             "counter_trade": counter_trade,
             "use_excess_return": use_excess_return,
             "threshold_width": threshold_width,
-            "ref_lag_days": ref_lag_days,
             "hold_days": hold_days,
             "start_days": start_days,
             "sma_period": sma_period,

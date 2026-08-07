@@ -106,7 +106,6 @@ class BackTestConfig:
             if not self.target_list:
                 raise ValueError("exclude_namesで全銘柄が除外されています。")
         self.signal_type_list: List[str] = config_data.get("signal_type_list", [])
-        self.ref_lag_days_list: List[int] = config_data.get("ref_lag_days_list", [])
         self.hold_days_list: List[int] = config_data.get("hold_days_list", [])
         self.start_days_list: List[int] = config_data.get("start_days_list", [])
         self.sma_period_list: List[int] = config_data.get("sma_period_list", [])

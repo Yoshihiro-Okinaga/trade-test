@@ -101,9 +101,9 @@ class MarketData:
         return target
 
 
-    def calc_ref_signals(self, ref_lag_days, start_days, sma_period):
+    def calc_ref_signals(self, start_days, sma_period):
         """シグナル源としての指標を計算して返す。
-        依存するのは ref_lag_days / start_days / sma_period の3つだけ。
+        依存するのは start_days / sma_period の2つだけ。
         閾値や counter_trade は売買判定で使うもので、ここでは使わない。"""
         ref = self.df.copy()
 
@@ -111,7 +111,7 @@ class MarketData:
         ref["ref_base"] = ref["終値"]
 
         # change
-        ref["ref_shift"] = ref["ref_base"].shift(ref_lag_days)
+        ref["ref_shift"] = ref["ref_base"].shift(sma_period)
         change_pct = (ref["ref_base"] - ref["ref_shift"]) / ref["ref_shift"] * 100
         ref["ref_signal_change"] = change_pct.shift(start_days)
 
@@ -214,7 +214,7 @@ def build_caches(config):
 
     タスクごとに計算し直すと同じ計算を何万回も繰り返すことになるが、
     実際に必要な組み合わせは
-      ref    : 銘柄 × ref_lag_days × start_days × sma_period
+      ref    : 銘柄 × start_days × sma_period
       target : 銘柄 × hold_days
     だけなので、ここでまとめて作っておけば済む。
     """
@@ -230,11 +230,10 @@ def build_caches(config):
     for name in all_names:
         data = MarketData(name)
         if name in ref_set:
-            for ref_lag_days in config.ref_lag_days_list:
-                for start_days in config.start_days_list:
-                    for sma_period in config.sma_period_list:
-                        key = (name, ref_lag_days, start_days, sma_period)
-                        ref_cache[key] = data.calc_ref_signals(ref_lag_days, start_days, sma_period)
+            for start_days in config.start_days_list:
+                for sma_period in config.sma_period_list:
+                    key = (name, start_days, sma_period)
+                    ref_cache[key] = data.calc_ref_signals(start_days, sma_period)
         if name in target_set:
             for hold_days in config.hold_days_list:
                 target_cache[(name, hold_days)] = data.calc_target_prices(hold_days)

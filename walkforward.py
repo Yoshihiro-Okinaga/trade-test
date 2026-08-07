@@ -281,13 +281,12 @@ def build_tasks(config):
     """main.py と同じ組み合わせを作る（閾値は指標ごとの候補を展開する）。"""
     return [
         (ref_name, target_name, signal_type, counter_trade, use_excess_return,
-         threshold_width, ref_lag_days, hold_days, start_days, sma_period)
+         threshold_width, hold_days, start_days, sma_period)
         for ref_name, target_name in config.iter_ref_target()
         for signal_type in config.signal_type_list
         for counter_trade in config.counter_trade
         for use_excess_return in config.use_excess_return
         for threshold_width in config.widths_of(signal_type)
-        for ref_lag_days in config.ref_lag_days_list
         for hold_days in config.hold_days_list
         for start_days in config.start_days_list
         for sma_period in config.sma_period_list
@@ -459,7 +458,7 @@ def write_outputs(records, folds, wf):
         writer.writerow([
             "test_start", "test_end", "train_start", "train_end",
             "target", "ref", "signal_type", "counter_trade", "use_excess_return",
-            "threshold_width", "ref_lag_days", "hold_days", "start_days", "sma_period",
+            "threshold_width", "hold_days", "start_days", "sma_period",
             "is_trades", "is_mean_pct", "is_t", "oos_trades", "oos_mean_pct",
         ])
         for r in sorted(records, key=lambda x: (x["test_start"], x["target"])):

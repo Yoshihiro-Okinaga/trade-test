@@ -48,15 +48,10 @@ signal_type_list = [
     "bb",
     #"macd",
     "rsi",
-    #"di",
+    "di",
     "stoch",
     #"streak",
     #"Test"
-]
-
-# signalがchangeの時、何日前の価格変化を使うか
-ref_lag_days_list = [
-    15,
 ]
 
 hold_days_list = [
@@ -90,7 +85,7 @@ no_overlap = true             # 重複補正あり
 # 除いた純粋な優位性を測れる。false なら従来通りの実損益。
 # リストで書くと両方を1回の実行で比較できる。
 use_excess_return = [
-    #true, 
+    true, 
     false,
 ]
 
