@@ -8,21 +8,21 @@
 # symbol_names で個別に追加もできる（両方書けば合算される）。
 # 銘柄の定義はすべて下の [symbols] にあり、グループもそこで宣言する。
 symbol_groups = [
-    #"fx",
-    #"index",
-    #"commodity",
+    "fx",
+    "index",
+    "commodity",
     #"stock",
 ]
 
 # グループに含まれない銘柄を個別に足したいときに使う。
 symbol_names = [
-    "EUR_GBP",
-    "GBP_CHF",
-    "AUD_USD",
-    "AUD_NZD",
-    "GBP_USD",
-    #"CAD_JPY",
-    #"USD_CHF",
+    # "EUR_GBP",
+    # "GBP_CHF",
+    # "AUD_USD",
+    # "AUD_NZD",
+    # "GBP_USD",
+    # #"CAD_JPY",
+    # #"USD_CHF",
 ]
 
 # ref には使うが target からは外す銘柄（コストが高い、取引困難など）。
@@ -32,36 +32,37 @@ exclude_names = [
 # 総当たりの代わりに、この (target ← ref) ペアだけを回す。
 # 空/未指定なら従来どおり symbol_groups × symbol_names の総当たり。
 symbol_pairs = [
-    { target = "GBP_USD",       ref = "EUR_GBP" },
-    { target = "AUD_USD",       ref = "EUR_GBP" },
-    { target = "USD_JPY",       ref = "GBP_AUD" },
-    { target = "NQ100_Futures", ref = "US30_Futures" },
-    { target = "AUD_USD",       ref = "SILVER_USD" },
-    { target = "OIL_USD",       ref = "COPPER_USD" },
-    { target = "GOLD_USD",      ref = "GBP_AUD" },
-    { target = "NQ100_Futures", ref = "USD_CAD" },
+    # { target = "GBP_USD",       ref = "EUR_GBP" },
+    # { target = "AUD_USD",       ref = "EUR_GBP" },
+    # { target = "USD_JPY",       ref = "GBP_AUD" },
+    # { target = "NQ100_Futures", ref = "US30_Futures" },
+    # { target = "AUD_USD",       ref = "SILVER_USD" },
+    # { target = "OIL_USD",       ref = "COPPER_USD" },
+    # { target = "GOLD_USD",      ref = "GBP_AUD" },
+    # { target = "NQ100_Futures", ref = "USD_CAD" },
 ]
 
 signal_type_list = [
     "change",
     "sma",
     "bb",
-    "macd",
+    #"macd",
     "rsi",
-    "di",
+    #"di",
     "stoch",
-    "streak",
+    #"streak",
     #"Test"
 ]
 
+# signalがchangeの時、何日前の価格変化を使うか
 ref_lag_days_list = [
     15,
 ]
 
 hold_days_list = [
     5,
-    10,
-    15,
+    #10,
+    #15,
 ]
 
 start_days_list = [
@@ -70,9 +71,11 @@ start_days_list = [
 
 sma_period_list = [
     10,
-    12,
     15,
     20,
+    50,
+    100,
+    200,
 ]
 
 counter_trade = [
@@ -104,7 +107,7 @@ period_years = [2001, 2006, 2011, 2016, 2021]
 filter_signal_type = "" #"adx"
 filter_max = 25.0
 trade_code_type = "all"      # "same", "not_same", "all"
-min_trade_count = 30
+min_trade_count = 150
 use_process_pool = true
 
 # true にすると、各タスクの実行時間（秒）を task_elapsed_seconds 列として
@@ -153,28 +156,28 @@ stoch = 50.0
 # swap: ロング保有時の日次スワップ率（％／日）。プラスならロングで受け取り、
 #       ショートは符号が反転する。省略すると 0。
 [symbols]
-EUR_GBP = { cost = 0.0001, swap = -0.00399, group = "fx" }
-EUR_USD = { cost = 0.00003, swap = -0.00367, group = "fx" }
-GBP_USD = { cost = 0.0001, swap = -0.00028, group = "fx" }
-USD_JPY = { cost = 0.002, swap = 0.00985, group = "fx" }
-AUD_JPY = { cost = 0.005, swap = 0.00983, group = "fx" }
-AUD_NZD = { cost = 0.0008, swap = 0.0035, group = "fx" }
-AUD_USD = { cost = 0.00004, swap = 0.00106, group = "fx" }
-CAD_JPY = { cost = 0.006, swap = 0.0, group = "fx" }
-CHF_JPY = { cost = 0.008, swap = -0.00171, group = "fx" }
-EUR_AUD = { cost = 0.00015, swap = -0.0055, group = "fx" }
-EUR_CHF = { cost = 0.00015, swap = 0.0055, group = "fx" }
-EUR_JPY = { cost = 0.004, swap = 0.00431, group = "fx" }
+EUR_GBP = { cost = 0.0001, swap = -0.00396, group = "fx" }
+EUR_USD = { cost = 0.00003, swap = -0.00319, group = "fx" }
+GBP_USD = { cost = 0.0001, swap = -0.00009, group = "fx" }
+USD_JPY = { cost = 0.002, swap = 0.00780, group = "fx" }
+AUD_JPY = { cost = 0.005, swap = 0.00891, group = "fx" }
+AUD_NZD = { cost = 0.0008, swap = 0.00477, group = "fx" }
+AUD_USD = { cost = 0.00004, swap = 0.00117, group = "fx" }
+CAD_JPY = { cost = 0.006, swap = 0.00355, group = "fx" }
+CHF_JPY = { cost = 0.008, swap = -0.00159, group = "fx" }
+EUR_AUD = { cost = 0.00015, swap = -0.00538, group = "fx" }
+EUR_CHF = { cost = 0.00015, swap = 0.00533, group = "fx" }
+EUR_JPY = { cost = 0.004, swap = 0.00412, group = "fx" }
 EUR_NZD = { cost = 0.00029, group = "fx" }
-GBP_AUD = { cost = 0.00015, swap = -0.00148, group = "fx" }
-GBP_CHF = { cost = 0.00028, swap = 0.00994, group = "fx" }
-GBP_JPY = { cost = 0.009, swap = 0.00813, group = "fx" }
-NZD_JPY = { cost = 0.007, swap = 0.00466, group = "fx" }
-NZD_USD = { cost = 0.00016, swap = -0.0035, group = "fx" }
-TRY_JPY = { cost = 0.014, swap = 0.07375, group = "fx" }
+GBP_AUD = { cost = 0.00015, swap = -0.00141, group = "fx" }
+GBP_CHF = { cost = 0.00028, swap = 0.00975, group = "fx" }
+GBP_JPY = { cost = 0.009, swap = 0.00791, group = "fx" }
+NZD_JPY = { cost = 0.007, swap = 0.00399, group = "fx" }
+NZD_USD = { cost = 0.00016, swap = -0.00291, group = "fx" }
+TRY_JPY = { cost = 0.014, swap = 0.07587, group = "fx" }
 USD_CAD = { cost = 0.0016, swap = 0.00985, group = "fx" }
-USD_CHF = { cost = 0.00016, swap = 0.00873, group = "fx" }
-ZAR_JPY = { cost = 0.009, swap = 0.1332, group = "fx" }
+USD_CHF = { cost = 0.00016, swap = 0.00914, group = "fx" }
+ZAR_JPY = { cost = 0.009, swap = 0.01338, group = "fx" }
 #CBOE_Volatility_Index = { cost = 0.09, group = "index" }
 DAX_Futures = { cost = 3.0, group = "index" }
 JAPAN255_Futures = { cost = 10.0, group = "index" }

@@ -61,6 +61,7 @@ def main():
 
     config = backtest_config.BackTestConfig(config_data)
     RANKING_OUTPUT_FILE = "trade_ranking.csv"
+    RANKING_OUTPUT_FILE_FULL = "trade_ranking_full.csv"
 
     tasks = [
         (ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, ref_lag_days, hold_days, start_days, sma_period)
@@ -130,7 +131,15 @@ def main():
     ).reset_index(drop=True)
     df_ranking.insert(0, "rank", df_ranking.index + 1)
     df_ranking = format_param_columns(df_ranking)
-    df_ranking.to_csv(RANKING_OUTPUT_FILE, index=False, encoding="utf-8", float_format=f"%.{ROUND_DIGITS}f",)
+    if len(df_ranking) > 10000:
+        # 1. 先頭10,000行だけを出力
+        df_ranking.head(10000).to_csv(RANKING_OUTPUT_FILE, index=False, encoding="utf-8", float_format=f"%.{ROUND_DIGITS}f",)
+    
+        # 2. 全行（フル）を出力
+        df_ranking.to_csv(RANKING_OUTPUT_FILE_FULL, index=False, encoding="utf-8", float_format=f"%.{ROUND_DIGITS}f",)
+    else:
+        # 10,000行以下の場合はそのまま出力
+        df_ranking.to_csv(RANKING_OUTPUT_FILE, index=False, encoding="utf-8", float_format=f"%.{ROUND_DIGITS}f",)
 
     print("\n=== 総合ランキング ===")
     with pd.option_context("display.precision", ROUND_DIGITS,
