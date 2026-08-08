@@ -83,10 +83,62 @@ class MarketData:
             raise ValueError(f"{csv_path}: 高値が安値を下回っています（行: {row_numbers}）")
 
         df = df.sort_values("日付")
+
+        # 株式分割の遡及調整（株価データのみ）。
+        # 生データは未調整で、分割日に価格が比率ぶんステップする。放置すると
+        # 分割日に偽の急落がリターン/シグナルとして混入する。
+        # 「株式分割」列を持つCSV（＝株データ）だけを対象に、各日の価格を
+        # 「その日より後に起きた全分割比の積」で割り、連続した系列にする。
+        # FX/指数/商品のCSVにはこの列が無いので一切影響しない。
+        if "株式分割" in df.columns:
+            df = self._adjust_for_splits(df)
+
         DATA_CACHE[path] = df
 
         # 計算中に列を追加するため、キャッシュ本体ではなくコピーを返す
         return DATA_CACHE[path].copy()
+
+    @staticmethod
+    def _parse_split_ratio(value):
+        """"1:1.5" -> 1.5（1株が1.5株になる＝価格の除数）。
+        "2:1" のような株式併合 -> 0.5。空や不正な値は None。"""
+        text = str(value).strip()
+        if not text or ":" not in text:
+            return None
+        before, _, after = text.partition(":")
+        try:
+            before = float(before)
+            after = float(after)
+        except ValueError:
+            return None
+        if before <= 0 or after <= 0:
+            return None
+        return after / before
+
+    def _adjust_for_splits(self, df):
+        """過去遡及調整。ある日の価格を、その日より後に起きた全分割比の積で割る。
+        分割日自身は既に調整後価格なので、自分の比では割らない（strictly後の分割のみ）。
+        df は日付昇順であること。"""
+        ratios = df["株式分割"].map(self._parse_split_ratio).tolist()
+        if not any(r is not None for r in ratios):
+            return df  # 分割イベントなし
+
+        # 新しい側から走査し、累積比を作る。
+        factors = [1.0] * len(df)
+        cum = 1.0
+        for i in range(len(df) - 1, -1, -1):
+            factors[i] = cum          # その日より後の分割比の積（自分の比は含めない）
+            r = ratios[i]
+            if r is not None and r > 0:
+                cum *= r              # これ以前の日には この分割比が効く
+        factor_series = pd.Series(factors, index=df.index)
+
+        # 実際に使う価格列を調整。出来高は売買判定に使わないため未調整のまま
+        # （厳密には比率倍すべきだが、シグナルに影響しない）。
+        for column in ["始値", "終値", "高値", "安値"]:
+            if column in df.columns:
+                df[column] = pd.to_numeric(df[column], errors="coerce") / factor_series
+        return df
 
 
     def calc_target_prices(self, hold_days):
