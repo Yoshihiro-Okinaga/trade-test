@@ -247,29 +247,40 @@ def run_one(config, task):
     if df_results is None or df_results.empty:
         return None
 
-    trade_count = len(df_results)
-    if trade_count < config.min_trade_count:
-        return None
-
     # long / short の片方が一度も成立しない場合、列が object dtype になり
     # .mean() が TypeError を投げるため、明示的に数値化しておく
     for c in ["profit_long", "profit_long_pct", "profit_short", "profit_short_pct"]:
         df_results[c] = pd.to_numeric(df_results[c], errors="coerce")
 
+    # ランキング集計の対象期間で絞る。config.ranking_period が空なら全期間（従来どおり）。
+    # ここで絞るのは順位付けに使う統計（t_value/average/trade_count 等）だけ。
+    # 期間別列（period_years）は下で常に全期間の df_results から作るので、
+    # 「後半で強く前半で弱い」を同時に確認できる。
+    if config.ranking_period:
+        rp_start, rp_end = config.ranking_period
+        df_rank = df_results[
+            (df_results["year"] >= rp_start) & (df_results["year"] <= rp_end)
+        ]
+    else:
+        df_rank = df_results
 
-    long_count = int((df_results["position"] == "long").sum())
-    short_count = int((df_results["position"] == "short").sum())
+    trade_count = len(df_rank)
+    if trade_count < config.min_trade_count:
+        return None
 
-    total_profit = df_results["profit"].sum()
-    average_pct = df_results["profit_pct"].mean()
-    std_pct = df_results["profit_pct"].std(ddof=1)
-    average_long_pct = df_results["profit_long_pct"].mean()
-    average_short_pct = df_results["profit_short_pct"].mean()
-    win_rate = (df_results["profit"] > 0).mean() * 100
-    year_summary = df_results.attrs["year_summary"]
-    year_profits = year_summary["profit"]
-    positive_year_ratio = (year_profits > 0).mean() * 100
-    worst_year_profit = year_profits.min()
+    long_count = int((df_rank["position"] == "long").sum())
+    short_count = int((df_rank["position"] == "short").sum())
+
+    total_profit = df_rank["profit"].sum()
+    average_pct = df_rank["profit_pct"].mean()
+    std_pct = df_rank["profit_pct"].std(ddof=1)
+    average_long_pct = df_rank["profit_long_pct"].mean()
+    average_short_pct = df_rank["profit_short_pct"].mean()
+    win_rate = (df_rank["profit"] > 0).mean() * 100
+    # 陽性年比率・最悪年も対象期間で数える（対象期間内の年ごと損益から算出）。
+    year_profits = df_rank.groupby("year")["profit"].sum()
+    positive_year_ratio = (year_profits > 0).mean() * 100 if len(year_profits) else float("nan")
+    worst_year_profit = year_profits.min() if len(year_profits) else float("nan")
     # t値: 平均損益がノイズと区別できるかの目安。
     # 平均が大きく、ばらつきが小さく、サンプルが多いほど高くなる。
     # 「平均は良いが少数サンプル」「平均は良いがσが巨大」といった

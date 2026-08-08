@@ -145,6 +145,20 @@ class BackTestConfig:
         # それぞれの average_pct と trade_count を列として出力する。
         # 空リストなら期間別の集計をしない。
         self.period_years: List[int] = config_data.get("period_years", [])
+        # main.py のランキング集計の対象期間 [開始年, 終了年]。
+        # 空/未指定なら全期間で t値・average・trade_count を計算する（従来どおり）。
+        # 例 [2015, 2026] とすると 2015〜2026 のトレードだけで順位付けする。
+        # 「昔は弱いが後半で伸びた」候補を上位に出すための機能。
+        # 期間別列（period_years）は常に全期間で出るので、前半の弱さも同時に見える。
+        # walkforward には影響しない（main.py のランキングのみ）。
+        self.ranking_period: List[int] = config_data.get("ranking_period", [])
+        if self.ranking_period:
+            if len(self.ranking_period) != 2:
+                raise ValueError(
+                    "ranking_period は [開始年, 終了年] の2要素で指定してください。"
+                )
+            if self.ranking_period[0] > self.ranking_period[1]:
+                raise ValueError("ranking_period は 開始年 <= 終了年 で指定してください。")
 
     def iter_ref_target(self):
         """(ref, target) を列挙する。

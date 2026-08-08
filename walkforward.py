@@ -121,74 +121,8 @@ def score_of(metric, n, s, ss):
     raise ValueError(f"未知の select_metric: {metric!r}")
 
 
-# ---------------------------------------------------------------------------
-# 学習期間の年減衰（直近重視）— 選抜(is_t)にだけ効く。OOS は常に等重き。
-# 半減期 None/0 のときは既存の等重き経路にそのまま委譲し、出力をビット一致させる。
-# ---------------------------------------------------------------------------
-
-def year_weight(year, newest_year, halflife):
-    """新しい年ほど 1.0 に近く、古い年ほど小さい重み。halflife 無効なら常に 1.0。"""
-    if halflife is None or halflife <= 0:
-        return 1.0
-    return 0.5 ** ((newest_year - year) / halflife)
-
-
-def agg_years_weighted(year_stats, lo, hi, halflife):
-    """[lo,hi]年を年減衰つきで合算。戻り: (raw_n, Nw, Sw, SSw, sum_w2n)。
-    raw_n は実取引数（取引数ゲートは実数で判定する）。"""
-    raw_n = 0
-    Nw = Sw = SSw = 0.0
-    sum_w2n = 0.0
-    for year, (c, su, sq, wi) in year_stats.items():
-        if lo <= year <= hi:
-            wy = year_weight(year, hi, halflife)
-            raw_n += c
-            Nw += wy * c
-            Sw += wy * su
-            SSw += wy * sq
-            sum_w2n += wy * wy * c
-    return raw_n, Nw, Sw, SSw, sum_w2n
-
-
-def weighted_mean_std_t(Nw, Sw, SSw, sum_w2n):
-    """Kish の有効サンプルサイズによる 加重平均/標準偏差/t。
-    全重み=1 のとき mean_std_t と一致する。"""
-    if Nw <= 0 or sum_w2n <= 0:
-        return float("nan"), float("nan"), float("nan")
-    mean = Sw / Nw
-    n_eff = Nw * Nw / sum_w2n
-    if n_eff > 1:
-        var = (SSw - Nw * mean * mean) / (n_eff - 1)
-        std = math.sqrt(var) if var > 0 else 0.0
-    else:
-        std = 0.0
-    t = (mean / std * math.sqrt(n_eff)) if (std > 0 and n_eff > 1) else float("nan")
-    return mean, std, t
-
-
-def is_summary(year_stats, lo, hi, metric, halflife):
-    """学習期間の (実取引数, 平均%, t値, 選抜スコア) を返す。
-    halflife 無効(None/0)なら従来の等重き経路に委譲＝ビット一致。
-    有効なら年減衰つきの加重統計を使う。"""
-    if halflife is None or halflife <= 0:
-        n, s, ss, w = agg_years(year_stats, lo, hi)
-        mean, std, t = mean_std_t(n, s, ss)
-        return n, mean, t, score_of(metric, n, s, ss)
-    raw_n, Nw, Sw, SSw, sum_w2n = agg_years_weighted(year_stats, lo, hi, halflife)
-    mean, std, t = weighted_mean_std_t(Nw, Sw, SSw, sum_w2n)
-    if metric == "t_value":
-        score = t
-    elif metric == "average_pct":
-        score = mean
-    elif metric == "total_pct":
-        score = float(Sw)   # 加重合計
-    else:
-        raise ValueError(f"未知の select_metric: {metric!r}")
-    return raw_n, mean, t, score
-
-
 def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
-                    min_is_t=0.0, is_t_halflife=0.0):
+                    min_is_t=0.0):
     """1フォールドぶんの選抜と未知期間評価を行い、選ばれた戦略の記録を返す。
 
     combos: [{"task": (...), "target": name, "years": {year:(n,s,ss,w)}}, ...]
@@ -196,26 +130,30 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
               その結果、良い候補が無い銘柄はその期間「見送り」となり張らない。
               0.0（既定）ならゲート無効で従来どおり全銘柄に張る。t値は選抜時点で
               分かる量なので、このゲートは未来情報を使わない（leak なし）。
-    is_t_halflife: 学習期間の t値(および選抜スコア)を「新しい年ほど重く」計算する半減期(年)。
-              0.0/None（既定）で等重き＝従来と完全一致。OOS 評価は常に等重きのまま。
     戻り値: 各選抜について、学習期間の成績と検証(未知)期間の成績を持つ dict のリスト。
+
+    注: 学習統計はすべて等重き（全トレードを同じ1票で扱う）。かつて試した年減衰
+    （直近重視）は、sma=200 のようにトレードが期間後半に偏る戦略で is_mean_pct を
+    凍結させ、is_t だけを膨らませて偽の高スコアを与える副作用があったため、本番選抜
+    からは外した。時間構造の診断は discriminate.py の半減期スイープで行う。
     """
     train_start, train_end, test_start, test_end = fold
 
     scored = []
     for combo in combos:
-        is_n, is_mean, is_t, score = is_summary(
-            combo["years"], train_start, train_end, metric, is_t_halflife)
-        if is_n < min_is_trades:
+        n, s, ss, w = agg_years(combo["years"], train_start, train_end)
+        if n < min_is_trades:
             continue
         # 品質ゲート: 学習期間の t値が基準に満たない候補は捨てる。
         # min_is_t=0.0 のときは何も捨てず従来の挙動を保つ（NaN t を巻き込まない）。
         if min_is_t > 0.0:
+            _, _, is_t = mean_std_t(n, s, ss)
             if math.isnan(is_t) or is_t < min_is_t:
                 continue
+        score = score_of(metric, n, s, ss)
         if score is None or (isinstance(score, float) and math.isnan(score)):
             continue
-        scored.append((score, combo, is_n, is_mean, is_t))
+        scored.append((score, combo, n, s, ss))
 
     # 決定的に並べる。スコア降順、同点は task タプルで安定させる
     # （実行ごとに順位がブレて出力 diff が壊れるのを防ぐ）。
@@ -236,7 +174,8 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
         raise ValueError(f"select_per は 'target' か 'global'。指定値: {select_per!r}")
 
     records = []
-    for score, combo, is_n, is_mean, is_t in selected:
+    for score, combo, is_n, is_s, is_ss in selected:
+        is_mean, is_std, is_t = mean_std_t(is_n, is_s, is_ss)
         oos_n, oos_s, oos_ss, oos_w = agg_years(combo["years"], test_start, test_end)
         oos_mean = (oos_s / oos_n) if oos_n > 0 else float("nan")
         records.append({
@@ -310,10 +249,6 @@ def read_wf_params(config_data):
         # 品質ゲート: 各銘柄の最良候補でも学習期間の t値がこの値未満なら、
         # その銘柄はその期間は見送る（張らない）。0.0 でゲート無効＝従来どおり。
         "min_is_t": float(wf.get("min_is_t", 0.0)),
-        # 学習期間の t値/選抜スコアを「新しい年ほど重く」計算する半減期(年)。
-        # 0.0（既定）で等重き＝従来と完全一致。値を入れると直近重視で選抜する。
-        # 注意: OOS が良くなる半減期を選ぶのは過剰最適化。値は最適化対象にしない。
-        "is_t_halflife": float(wf.get("is_t_halflife", 0.0)),
     }
 
 
@@ -373,8 +308,7 @@ def scan_thresholds(combos, folds, wf, thresholds):
         for fold in folds:
             recs.extend(select_for_fold(
                 combos, fold, wf["select_metric"], wf["select_per"],
-                wf["select_top_k"], wf["min_is_trades"], thr,
-                wf["is_t_halflife"]))
+                wf["select_top_k"], wf["min_is_trades"], thr))
         n = sum(r["oos_trades"] for r in recs)
         if n == 0:
             print(f"{thr:>9.1f}{len(recs):>7}{0:>9}{'—':>10}{'—':>12}")
@@ -462,10 +396,10 @@ def write_outputs(records, folds, wf):
             "is_trades", "is_mean_pct", "is_t", "oos_trades", "oos_mean_pct",
         ])
         for r in sorted(records, key=lambda x: (x["test_start"], x["target"])):
-            ref, target, sig, counter, excess, width, lag, hold, start, sma = r["task"]
+            ref, target, sig, counter, excess, width, hold, start, sma = r["task"]
             writer.writerow([
                 r["test_start"], r["test_end"], r["train_start"], r["train_end"],
-                target, ref, sig, counter, excess, width, lag, hold, start, sma,
+                target, ref, sig, counter, excess, width, hold, start, sma,
                 r["is_trades"], f"{r['is_mean_pct']:.9f}",
                 ("" if math.isnan(r["is_t"]) else f"{r['is_t']:.9f}"),
                 r["oos_trades"],
@@ -605,7 +539,6 @@ def run():
         all_records.extend(select_for_fold(
             combos, fold, wf["select_metric"], wf["select_per"],
             wf["select_top_k"], wf["min_is_trades"], wf["min_is_t"],
-            wf["is_t_halflife"],
         ))
 
     if not all_records:
