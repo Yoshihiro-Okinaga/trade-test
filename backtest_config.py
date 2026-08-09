@@ -109,6 +109,13 @@ class BackTestConfig:
         self.hold_days_list: List[int] = config_data.get("hold_days_list", [])
         self.start_days_list: List[int] = config_data.get("start_days_list", [])
         self.sma_period_list: List[int] = config_data.get("sma_period_list", [])
+        # 一律の追加コスト（%／取引）。現実の摩擦（スプレッド変動・スリッページ・
+        # 約定ズレ）の上乗せ分を、全銘柄まとめて検証するためのつまみ。
+        # 各トレードの損益から entry 価格の extra_cost_pct% を引く（long/short 問わず）。
+        # 0.0 なら従来どおり影響なし。値を振って main.py / walkforward.py を回すと、
+        # 「摩擦をどこまで乗せても期待値がプラスで残るか」を選抜込みで検証できる。
+        self.extra_cost_pct: float = config_data.get("extra_cost_pct", 0.0)
+
         self.trade_code_type: str = config_data.get("trade_code_type", "all")
         self.min_trade_count: int = config_data.get("min_trade_count", 10)
         self.counter_trade: List[bool] = config_data.get("counter_trade", [False])

@@ -167,6 +167,10 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
                 # ドリフトを価格に換算して差し引く。
                 # long（+1）は追い風を、short（-1）は逆風を取り除く。
                 profit -= POS_RATE[i] * drift_pct / 100 * entry_price
+            if config.extra_cost_pct:
+                # 一律の追加コスト。現実の摩擦の上乗せ分を entry 価格基準で引く。
+                # 摩擦なので long/short どちらでも必ずマイナス（符号を持たせない）。
+                profit -= config.extra_cost_pct / 100 * entry_price
             profit_pct = profit / entry_price * 100
             profit_ls[i] = profit
             profit_ls_pct[i] = profit_pct

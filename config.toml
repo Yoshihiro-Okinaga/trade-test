@@ -80,9 +80,13 @@ signal_type_list = [
 ]
 
 hold_days_list = [
-    5,
+    #5,
     #10,
-    #15,
+    20,
+    #30,
+    #40,
+    #50,
+    #60,
 ]
 
 start_days_list = [
@@ -122,6 +126,9 @@ period_years = [2001, 2006, 2011, 2016, 2021]
 
 # 期間の設定
 #ranking_period = [2015, 2026]
+
+# エクストラコスト
+extra_cost_pct = 0.1
 
 # 売買フィルタ。指定した指標の値が filter_max 以下の日だけエントリーする。
 # adx は「トレンドの強さ」で方向を持たないため単独売買には使えないが、
@@ -236,4 +243,4 @@ select_metric = "t_value"  # "t_value" / "average_pct" / "total_pct"
 select_per = "target"      # "target"(銘柄ごと) / "global"(全体)
 select_top_k = 1           # 各グループから選ぶ戦略数
 min_is_trades = 30         # 選抜に必要な学習期間の最小取引数
-min_is_t = 3.0             # 学習期間のt値がこの値未満の銘柄は見送る。0で無効
+min_is_t = 2.0             # 学習期間のt値がこの値未満の銘柄は見送る。0で無効
