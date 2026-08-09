@@ -1,3 +1,4 @@
+
 import operator
 import time
 import pandas as pd
@@ -108,6 +109,18 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
         if pd.isna(drift_pct):
             drift_pct = 0.0
 
+    # ボラ基準サイジング用の事前計算。
+    # 対象銘柄の日次リターンの標準偏差（%）を rolling で測り、entry より前の情報
+    # だけを使うよう shift(1) する（先読み防止）。size = target_vol_pct / 直近ボラ を
+    # [min_size, max_size] でクリップ。ボラが測れない期間や 0 のときは size=1.0。
+    size_at_entry = None
+    if getattr(config, "position_sizing", False):
+        tgt_ret = merged["target_base"].pct_change()
+        vol = tgt_ret.rolling(config.vol_lookback_days).std().shift(1) * 100.0
+        sizes = config.target_vol_pct / vol
+        sizes = sizes.clip(lower=config.min_size, upper=config.max_size)
+        size_at_entry = sizes.replace([float("inf"), float("-inf")], 1.0).fillna(1.0).to_numpy()
+
     # 重複補正用: 方向ごと（0=long, 1=short）に次のエントリー可能日を保持する。
     # no_overlap=True のとき、決済日より前は同方向の新規を建てない。
     # long/short は独立に管理する（両建てあり）。
@@ -148,6 +161,30 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
             exit_price = target_shifts[idx]
 
             if pd.isna(exit_price):
+                # 通常は「決済価格が未確定（保有期間が未来に届いていない）」トレードは
+                # 捨てる。ただし実運用シグナル用に emit_open_positions が有効なときは、
+                # 「まだ決済日が来ていない建玉（＝いま保有中のオープンポジション）」として
+                # 記録する。損益は未確定なので NaN。
+                if getattr(config, "emit_open_positions", False):
+                    size_o = float(size_at_entry[idx]) if size_at_entry is not None else 1.0
+                    results.append({
+                        "size": size_o,
+                        "sized_profit_pct": float("nan"),
+                        "position": POS_NAME[i],
+                        "entry_date": date,
+                        "exit_date": pd.NaT,
+                        "entry_price": entry_price,
+                        "exit_price": float("nan"),
+                        "profit": float("nan"),
+                        "profit_pct": float("nan"),
+                        "profit_long": None, "profit_long_pct": None,
+                        "profit_short": None, "profit_short_pct": None,
+                        "year": date.year,
+                        "is_open": True,
+                    })
+                    if config.no_overlap:
+                        # 予定決済日（営業日 hold_days 先）まで同方向の新規をロック。
+                        next_entry_ok_date[i] = date + pd.tseries.offsets.BDay(hold_days)
                 continue
 
             exit_date = exit_dates[idx]
@@ -175,7 +212,12 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
             profit_ls[i] = profit
             profit_ls_pct[i] = profit_pct
 
+            # ボラ基準サイズ（無効なら 1.0）。選抜には使わず、エクイティ側でのみ利用。
+            size = float(size_at_entry[idx]) if size_at_entry is not None else 1.0
+
             results.append({
+                "size": size,
+                "sized_profit_pct": size * profit_pct,
                 "position": POS_NAME[i],
                 "entry_date": date,
                 "exit_date": exit_date,
@@ -187,7 +229,8 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
                 "profit_long_pct": profit_ls_pct[0],
                 "profit_short": profit_ls[1],
                 "profit_short_pct": profit_ls_pct[1],
-                "year": date.year
+                "year": date.year,
+                "is_open": False
             })
 
     # === 年ごとに集計 ===
@@ -342,5 +385,6 @@ def run_one(config, task):
         result["task_elapsed_seconds"] = time.perf_counter() - task_start
 
     return result
+
 
 

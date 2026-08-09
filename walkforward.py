@@ -1,3 +1,4 @@
+
 """
 walk-forward 検証
 
@@ -48,7 +49,7 @@ from concurrent.futures import ProcessPoolExecutor
 # 単体テストしやすいよう、モジュール読み込み時ではなく関数内で import する。
 
 MAX_WORKERS = min(32, os.cpu_count() or 1)
-SAVE_PATH = "./"#"../trade-test/"
+SAVE_PATH = "../TestResult/"
 
 # ============================================================================
 # 純粋なロジック（外部依存なし。ここだけで単体テストできる）
@@ -281,20 +282,32 @@ def build_equity(trades):
     trades: [{"exit_date":..., "entry_date":..., "profit_pct":float, ...}, ...]"""
     ordered = sorted(trades, key=lambda t: (t["exit_date"], t["entry_date"]))
     cum = 0.0
+    cum_sized = 0.0
     curve = []
     for t in ordered:
+        size = t.get("size", 1.0)
         cum += t["profit_pct"]
+        cum_sized += size * t["profit_pct"]
         row = dict(t)
         row["cumulative_pct"] = cum
+        row["cumulative_sized_pct"] = cum_sized
         curve.append(row)
     cumulative = [row["cumulative_pct"] for row in curve]
+    cumulative_sized = [row["cumulative_sized_pct"] for row in curve]
     if cumulative:
         mdd, pk, tr = max_drawdown(cumulative)
         final = cumulative[-1]
+        mdd_s, pk_s, tr_s = max_drawdown(cumulative_sized)
+        final_s = cumulative_sized[-1]
+        sized_sum = sum(t.get("size", 1.0) for t in ordered)
     else:
         mdd, pk, tr, final = 0.0, 0, 0, 0.0
+        mdd_s, pk_s, tr_s, final_s, sized_sum = 0.0, 0, 0, 0.0, 0.0
     return curve, {"final_pct": final, "max_dd_pct": mdd,
-                   "peak_idx": pk, "trough_idx": tr, "n": len(curve)}
+                   "peak_idx": pk, "trough_idx": tr, "n": len(curve),
+                   "final_sized_pct": final_s, "max_dd_sized_pct": mdd_s,
+                   "peak_sized_idx": pk_s, "trough_sized_idx": tr_s,
+                   "size_sum": sized_sum}
 
 
 def scan_thresholds(combos, folds, wf, thresholds):
@@ -345,6 +358,7 @@ def collect_oos_trades(config, records):
                     "exit_date": row.exit_date,
                     "entry_date": row.entry_date,
                     "profit_pct": float(row.profit_pct),
+                    "size": float(getattr(row, "size", 1.0)),
                     "pair": pair,
                     "test_period": f"{ts}-{te}",
                 })
@@ -365,10 +379,14 @@ def build_and_write_equity(config, records):
     eq_path = SAVE_PATH + "walkforward_equity.csv"
     with open(eq_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["exit_date", "profit_pct", "cumulative_pct", "pair", "test_period"])
+        w.writerow(["exit_date", "profit_pct", "size", "sized_profit_pct",
+                    "cumulative_pct", "cumulative_sized_pct", "pair", "test_period"])
         for row in curve:
+            size = row.get("size", 1.0)
             w.writerow([str(row["exit_date"])[:10], f"{row['profit_pct']:.6f}",
-                        f"{row['cumulative_pct']:.6f}", row["pair"], row["test_period"]])
+                        f"{size:.4f}", f"{size * row['profit_pct']:.6f}",
+                        f"{row['cumulative_pct']:.6f}", f"{row['cumulative_sized_pct']:.6f}",
+                        row["pair"], row["test_period"]])
 
     n = stats["n"]
     print("\n=== エクイティ（未知トレードを実現日で連結。等額・非複利＝1取引1単位を加算）===")
@@ -381,6 +399,22 @@ def build_and_write_equity(config, records):
         tr = curve[stats["trough_idx"]]
         print(f"  DD区間: {str(pk['exit_date'])[:10]}（山 {pk['cumulative_pct']:+.1f}%）"
               f" → {str(tr['exit_date'])[:10]}（谷 {tr['cumulative_pct']:+.1f}%）")
+
+    # サイズが実際に効いている（＝ボラ基準サイジングが有効）ときだけ、比較ブロックを出す。
+    if config.position_sizing and stats.get("size_sum", n) != n:
+        fs = stats["final_sized_pct"]
+        avg_size = stats["size_sum"] / n if n else 0.0
+        print("\n=== ボラ基準サイジング適用後（同じ選抜・同じトレード、サイズだけ変更）===")
+        print(f"平均サイズ           : {avg_size:.2f}（1.0＝等額）")
+        print(f"累積リターン（合計%） : {fs:+.2f}%")
+        print(f"リスク単位あたり平均  : {fs / stats['size_sum']:+.4f}%（サイズ総和で正規化）")
+        print(f"最大ドローダウン      : {stats['max_dd_sized_pct']:.2f}%（累積%ポイント）")
+        # DD/リターンで正規化して等額と比べる（水準ではなく比で見る）
+        if stats["final_pct"] > 0 and fs > 0:
+            r_eq = stats["max_dd_pct"] / stats["final_pct"]
+            r_sz = stats["max_dd_sized_pct"] / fs
+            print(f"DD/リターン           : 等額 {r_eq:.2f} → サイジング {r_sz:.2f}"
+                  f"（小さいほど握りやすい）")
     print(f"出力: {eq_path}")
 
 
@@ -572,5 +606,169 @@ def run():
     print(f"総実行時間: {duration}")
 
 
+def run_live(recent_closed=5):
+    """実運用シグナル出力モード（`python walkforward.py live`）。
+
+    「いま running させたら何を売買するか」を体感するためのモード。
+    walk-forward と同じ選抜ロジックを使い、直近 train_years 年を学習期間として
+    今の最良戦略を銘柄ごとに選び、その戦略が現在出しているシグナルを表示する:
+      - 現在のオープン建玉（まだ決済日が来ていない保有中ポジション）
+      - 直近の決済済みトレード（参考）
+    選抜規則は walk-forward で検証したものと同一なので、実運用とズレない。
+    ただし未来は分からないので、これは「今この瞬間の推奨」であって成績保証ではない。
+    """
+    import tomllib
+    import backtest
+    import market_data
+    import backtest_config
+    import numpy as np
+
+    config_path = Path(__file__).parent / "config.toml"
+    try:
+        with open(config_path, "rb") as f:
+            config_data = tomllib.load(f)
+    except FileNotFoundError:
+        print(f"エラー: {config_path} が見つかりません。")
+        sys.exit(1)
+
+    config = backtest_config.BackTestConfig(config_data)
+    wf = read_wf_params(config_data)
+
+    print("指標を事前計算しています...", flush=True)
+    ref_cache, target_cache = market_data.build_caches(config)
+    backtest.init_worker(config, ref_cache, target_cache)
+
+    # データ最終日（＝「いま」の基準日）を求める。
+    last_date = None
+    for _key, tdf in target_cache.items():
+        d = tdf["日付"].max()
+        last_date = d if last_date is None else max(last_date, d)
+
+    # --- 全組み合わせの年別統計（選抜のため。emit_open はまだ False）---
+    tasks = build_tasks(config)
+    print(f"組み合わせ数: {len(tasks):,} / 集計中...", flush=True)
+    combos = []
+    for task in tasks:
+        r = collect_year_stats(task)
+        if r is not None:
+            combos.append(r)
+    if not combos:
+        print("有効なトレードがある組み合わせがありませんでした。")
+        return
+
+    all_years = set()
+    for c in combos:
+        all_years.update(c["years"].keys())
+    max_year = max(all_years)
+    train_start = max_year - wf["train_years"] + 1
+
+    # 「いま」の選抜: 直近 train_years 年を学習に使う（検証枠は使わないので便宜上 max_year）。
+    live_fold = (train_start, max_year, max_year, max_year)
+    records = select_for_fold(combos, live_fold, wf["select_metric"],
+                              wf["select_per"], wf["select_top_k"],
+                              wf["min_is_trades"], wf["min_is_t"])
+    if not records:
+        print("選抜条件を満たす戦略がありませんでした（min_is_trades / min_is_t を緩めてください）。")
+        return
+
+    print(f"\n{'='*72}")
+    print(f" 実運用シグナル")
+    print(f"  基準日（データ最終日）: {str(last_date)[:10]}")
+    print(f"  選抜: 直近 {train_start}–{max_year} 年で学習 / {wf['select_per']}ごと上位"
+          f"{wf['select_top_k']} / min_is_t={wf['min_is_t']}")
+    print(f"  選抜された戦略: {len(records)} 本")
+    print(f"{'='*72}")
+
+    # --- 選抜戦略を emit_open 有効で再計算し、オープン建玉と直近決済を集める ---
+    config.emit_open_positions = True
+    open_rows, recent_rows = [], []
+    for rec in records:
+        task = rec["task"]
+        df, _corr, _msg = backtest.calc_trade_results(config, *task)
+        if df is None or df.empty:
+            continue
+        pair = f"{task[1]} ← {task[0]}"
+        hold_days = task[6]
+        if "is_open" not in df.columns:
+            df["is_open"] = False
+        opens = df[df["is_open"] == True]
+        for row in opens.itertuples():
+            ed = row.entry_date
+            held = int(np.busday_count(np.datetime64(ed, "D"), np.datetime64(last_date, "D")))
+            open_rows.append({
+                "pair": pair, "position": row.position,
+                "entry_date": ed, "entry_price": row.entry_price,
+                "held_days": held, "hold_days": hold_days,
+                "remaining": max(hold_days - held, 0),
+                "is_new": (str(ed)[:10] == str(last_date)[:10]),
+                "is_t": rec["is_t"], "is_mean_pct": rec["is_mean_pct"],
+            })
+        closed = df[df["is_open"] == False].dropna(subset=["exit_date"])
+        if not closed.empty:
+            for row in closed.sort_values("exit_date").tail(recent_closed).itertuples():
+                recent_rows.append({
+                    "pair": pair, "position": row.position,
+                    "entry_date": row.entry_date, "exit_date": row.exit_date,
+                    "profit_pct": row.profit_pct,
+                })
+
+    # --- レポート出力 ---
+    def arrow(pos):
+        return "▲買い" if pos == "long" else "▼売り"
+
+    print("\n■ 現在のオープン建玉（いま保有中＝実運用ならこのポジションを持っている）")
+    if open_rows:
+        open_rows.sort(key=lambda r: (r["entry_date"]), reverse=True)
+        print(f"  {'銘柄(target←ref)':32s}{'売買':8s}{'建玉日':12s}{'建値':>10s}"
+              f"{'経過':>5s}{'残':>4s}  IS_t")
+        for r in open_rows:
+            tag = "  ★本日の新規シグナル" if r["is_new"] else ""
+            print(f"  {r['pair']:32s}{arrow(r['position']):8s}"
+                  f"{str(r['entry_date'])[:10]:12s}{r['entry_price']:>10.4f}"
+                  f"{r['held_days']:>4d}日{r['remaining']:>3d}日  {r['is_t']:.2f}{tag}")
+        news = [r for r in open_rows if r["is_new"]]
+        if news:
+            print(f"\n  → 本日({str(last_date)[:10]})の新規シグナル: {len(news)} 件"
+                  f"（上の ★ 印。次の取引でエントリー）")
+        else:
+            print(f"\n  → 本日({str(last_date)[:10]})の新規シグナルはなし（既存の保有のみ）")
+    else:
+        print("  現在オープンの建玉はありません（どの戦略も直近でシグナルを出していない）。")
+
+    print("\n■ 直近の決済済みトレード（参考）")
+    if recent_rows:
+        recent_rows.sort(key=lambda r: r["exit_date"], reverse=True)
+        print(f"  {'銘柄(target←ref)':32s}{'売買':8s}{'決済日':12s}{'損益%':>9s}")
+        for r in recent_rows[:15]:
+            print(f"  {r['pair']:32s}{arrow(r['position']):8s}"
+                  f"{str(r['exit_date'])[:10]:12s}{r['profit_pct']:>+9.3f}")
+    else:
+        print("  直近の決済トレードがありません。")
+
+    # --- CSV 出力 ---
+    live_path = SAVE_PATH + "live_signals.csv"
+    with open(live_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["type", "pair", "position", "entry_date", "entry_price",
+                    "held_days", "remaining_days", "is_new_today", "exit_date",
+                    "profit_pct", "is_t", "is_mean_pct"])
+        for r in sorted(open_rows, key=lambda x: x["entry_date"], reverse=True):
+            w.writerow(["OPEN", r["pair"], r["position"], str(r["entry_date"])[:10],
+                        f"{r['entry_price']:.4f}", r["held_days"], r["remaining"],
+                        int(r["is_new"]), "", "", f"{r['is_t']:.4f}",
+                        f"{r['is_mean_pct']:.4f}"])
+        for r in sorted(recent_rows, key=lambda x: x["exit_date"], reverse=True):
+            w.writerow(["CLOSED", r["pair"], r["position"], str(r["entry_date"])[:10],
+                        "", "", "", "", str(r["exit_date"])[:10],
+                        f"{r['profit_pct']:.4f}", "", ""])
+    print(f"\n出力: {live_path}")
+    print("\n※ これは「いまの推奨ポジション」であって、将来の利益を保証するものでは"
+          "ありません。実際に張る前に必ず小さいサイズ・紙トレードから。")
+
+
 if __name__ == "__main__":
-    run()
+    if len(sys.argv) > 1 and sys.argv[1] == "live":
+        run_live()
+    else:
+        run()
+
