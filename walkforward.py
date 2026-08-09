@@ -49,7 +49,7 @@ from concurrent.futures import ProcessPoolExecutor
 # 単体テストしやすいよう、モジュール読み込み時ではなく関数内で import する。
 
 MAX_WORKERS = min(32, os.cpu_count() or 1)
-SAVE_PATH = "../TestResult/"
+SAVE_PATH = "./"#"../TestResult/"
 
 # ============================================================================
 # 純粋なロジック（外部依存なし。ここだけで単体テストできる）
