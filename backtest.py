@@ -109,18 +109,6 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
         if pd.isna(drift_pct):
             drift_pct = 0.0
 
-    # ボラ基準サイジング用の事前計算。
-    # 対象銘柄の日次リターンの標準偏差（%）を rolling で測り、entry より前の情報
-    # だけを使うよう shift(1) する（先読み防止）。size = target_vol_pct / 直近ボラ を
-    # [min_size, max_size] でクリップ。ボラが測れない期間や 0 のときは size=1.0。
-    size_at_entry = None
-    if getattr(config, "position_sizing", False):
-        tgt_ret = merged["target_base"].pct_change()
-        vol = tgt_ret.rolling(config.vol_lookback_days).std().shift(1) * 100.0
-        sizes = config.target_vol_pct / vol
-        sizes = sizes.clip(lower=config.min_size, upper=config.max_size)
-        size_at_entry = sizes.replace([float("inf"), float("-inf")], 1.0).fillna(1.0).to_numpy()
-
     # 重複補正用: 方向ごと（0=long, 1=short）に次のエントリー可能日を保持する。
     # no_overlap=True のとき、決済日より前は同方向の新規を建てない。
     # long/short は独立に管理する（両建てあり）。
@@ -166,10 +154,7 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
                 # 「まだ決済日が来ていない建玉（＝いま保有中のオープンポジション）」として
                 # 記録する。損益は未確定なので NaN。
                 if getattr(config, "emit_open_positions", False):
-                    size_o = float(size_at_entry[idx]) if size_at_entry is not None else 1.0
                     results.append({
-                        "size": size_o,
-                        "sized_profit_pct": float("nan"),
                         "position": POS_NAME[i],
                         "entry_date": date,
                         "exit_date": pd.NaT,
@@ -212,12 +197,7 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
             profit_ls[i] = profit
             profit_ls_pct[i] = profit_pct
 
-            # ボラ基準サイズ（無効なら 1.0）。選抜には使わず、エクイティ側でのみ利用。
-            size = float(size_at_entry[idx]) if size_at_entry is not None else 1.0
-
             results.append({
-                "size": size,
-                "sized_profit_pct": size * profit_pct,
                 "position": POS_NAME[i],
                 "entry_date": date,
                 "exit_date": exit_date,

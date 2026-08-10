@@ -124,21 +124,6 @@ class BackTestConfig:
         # （オープンは損益 NaN なので、選抜統計に混ぜてはいけない）。
         self.emit_open_positions: bool = config_data.get("emit_open_positions", False)
 
-        # === ボラ基準ポジションサイジング（最小構成）===
-        # 各トレードのサイズを、対象銘柄の直近ボラに反比例させて「1取引あたりの
-        # リスク」を揃える。ボラの高い銘柄は小さく、低い銘柄は大きく張る。
-        # 選抜（t値）は生の profit_pct のまま。サイズは最終エクイティにだけ効かせる
-        # ので、これを入れても選抜結果は変わらない（＝純粋にDDへの効果を見られる）。
-        # position_sizing=False（既定）なら全サイズ1.0で従来と完全に同じ。
-        self.position_sizing: bool = config_data.get("position_sizing", False)
-        # ボラを測る期間（日次リターンの標準偏差をとる窓）。
-        self.vol_lookback_days: int = config_data.get("vol_lookback_days", 60)
-        # 目標とする1取引あたりの日次ボラ(%)。size = target_vol_pct / 直近ボラ。
-        self.target_vol_pct: float = config_data.get("target_vol_pct", 1.0)
-        # サイズの上下限（極端な拡大・縮小を抑える）。
-        self.max_size: float = config_data.get("max_size", 3.0)
-        self.min_size: float = config_data.get("min_size", 0.2)
-
         self.trade_code_type: str = config_data.get("trade_code_type", "all")
         self.min_trade_count: int = config_data.get("min_trade_count", 10)
         self.counter_trade: List[bool] = config_data.get("counter_trade", [False])

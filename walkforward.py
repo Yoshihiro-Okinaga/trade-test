@@ -379,12 +379,10 @@ def build_and_write_equity(config, records):
     eq_path = SAVE_PATH + "walkforward_equity.csv"
     with open(eq_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["exit_date", "profit_pct", "size", "sized_profit_pct",
+        w.writerow(["exit_date", "profit_pct",
                     "cumulative_pct", "cumulative_sized_pct", "pair", "test_period"])
         for row in curve:
-            size = row.get("size", 1.0)
             w.writerow([str(row["exit_date"])[:10], f"{row['profit_pct']:.6f}",
-                        f"{size:.4f}", f"{size * row['profit_pct']:.6f}",
                         f"{row['cumulative_pct']:.6f}", f"{row['cumulative_sized_pct']:.6f}",
                         row["pair"], row["test_period"]])
 
@@ -400,21 +398,6 @@ def build_and_write_equity(config, records):
         print(f"  DD区間: {str(pk['exit_date'])[:10]}（山 {pk['cumulative_pct']:+.1f}%）"
               f" → {str(tr['exit_date'])[:10]}（谷 {tr['cumulative_pct']:+.1f}%）")
 
-    # サイズが実際に効いている（＝ボラ基準サイジングが有効）ときだけ、比較ブロックを出す。
-    if config.position_sizing and stats.get("size_sum", n) != n:
-        fs = stats["final_sized_pct"]
-        avg_size = stats["size_sum"] / n if n else 0.0
-        print("\n=== ボラ基準サイジング適用後（同じ選抜・同じトレード、サイズだけ変更）===")
-        print(f"平均サイズ           : {avg_size:.2f}（1.0＝等額）")
-        print(f"累積リターン（合計%） : {fs:+.2f}%")
-        print(f"リスク単位あたり平均  : {fs / stats['size_sum']:+.4f}%（サイズ総和で正規化）")
-        print(f"最大ドローダウン      : {stats['max_dd_sized_pct']:.2f}%（累積%ポイント）")
-        # DD/リターンで正規化して等額と比べる（水準ではなく比で見る）
-        if stats["final_pct"] > 0 and fs > 0:
-            r_eq = stats["max_dd_pct"] / stats["final_pct"]
-            r_sz = stats["max_dd_sized_pct"] / fs
-            print(f"DD/リターン           : 等額 {r_eq:.2f} → サイジング {r_sz:.2f}"
-                  f"（小さいほど握りやすい）")
     print(f"出力: {eq_path}")
 
 
@@ -559,6 +542,20 @@ def run():
     for combo in combos:
         all_years.update(combo["years"].keys())
     min_year, max_year = min(all_years), max(all_years)
+    # ranking_period が指定されていれば、walk-forward の対象年もその範囲に収める。
+    # これで「まず 2001-2020 で前進検証 → 2021 以降は最終テストまで手つかずで温存」
+    # という段階的な使い方ができる（学習も検証もこの範囲内だけで行う）。
+    # 空 [] なら全期間（従来どおり）。
+    if config.ranking_period:
+        rp_start, rp_end = config.ranking_period
+        data_min, data_max = min_year, max_year
+        min_year = max(min_year, rp_start)
+        max_year = min(max_year, rp_end)
+        print(f"ranking_period 適用: {rp_start}〜{rp_end} に限定"
+              f"（データ実在範囲 {data_min}〜{data_max}）")
+        if min_year > max_year:
+            print("ranking_period がデータ範囲と重なりません。設定を見直してください。")
+            sys.exit(1)
     folds = make_folds(min_year, max_year, wf["train_years"], wf["test_years"],
                        wf["step_years"], wf["mode"])
     if not folds:

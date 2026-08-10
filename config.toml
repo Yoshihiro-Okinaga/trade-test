@@ -31,88 +31,52 @@ exclude_names = [
 
 # 総当たりの代わりに、この (target ← ref) ペアだけを回す。
 # 空/未指定なら従来どおり symbol_groups × symbol_names の総当たり。
-# symbol_pairs = [
-#     # 本命群
-#     { target = "AUD_USD",       ref = "EUR_GBP" },
-#     { target = "GBP_USD",       ref = "EUR_GBP" },
-#     { target = "EUR_AUD",       ref = "EUR_GBP" },
-#     { target = "AUD_USD",       ref = "GBP_CHF" },
-#     { target = "NQ100_Futures", ref = "TRY_JPY" },
-#     { target = "NQ100_Futures", ref = "GBP_CHF" },
-#     { target = "EUR_USD",       ref = "EUR_CHF" },
-#     { target = "AUD_JPY",       ref = "EUR_GBP" },
-#     # 第二候補群
-#     { target = "NZD_USD",       ref = "EUR_GBP" },
-#     { target = "GBP_JPY",       ref = "EUR_GBP" },
-#     { target = "AUD_JPY",       ref = "GBP_CHF" },
-#     { target = "AUD_USD",       ref = "JAPAN255_Futures" },
-#     { target = "GBP_AUD",       ref = "JAPAN255_Futures" },
-#     { target = "GBP_AUD",       ref = "DAX_Futures" },
-#     { target = "GBP_JPY",       ref = "USSPX500_Futures" },
-#     { target = "USD_CHF",       ref = "EUR_CHF" },
-#     { target = "OIL_USD",       ref = "COPPER_USD" },
-#     { target = "UK100_Futures", ref = "USSPX500_Futures" },
-#     # 第三候補群
-#     { target = "USD_JPY",                ref = "EUR_CHF" },
-#     { target = "DAX_Futures",            ref = "TRY_JPY" },
-#     { target = "DAX_Futures",            ref = "GBP_JPY" },
-#     { target = "JAPAN255_Futures",       ref = "GBP_CHF" },
-#     { target = "CHF_JPY",                ref = "GBP_AUD" },
-#     { target = "CHF_JPY",                ref = "UK100_Futures" },
-#     { target = "UK100_Futures",          ref = "NQ100_Futures" },
-#     { target = "CAD_JPY",                ref = "EUR_GBP" },
-#     { target = "EUR_AUD",                ref = "GBP_CHF" },
-#     { target = "USD_JPY",                ref = "USSPX500_Futures" },
-#     { target = "OIL_USD",                ref = "AUD_USD" },
-#     { target = "GBP_AUD",                ref = "US30_Futures" },
-# ]
-
 # 2001～2020で作ったデータ
-symbol_pairs = [
-    # =========================================================
-    # 本命
-    # =========================================================
-    { target = "OIL_USD",       ref = "COPPER_USD" },          # t=4.11。5期間すべてプラス、Top500に13設定・6指標。今回最有力
-    { target = "AUD_USD",       ref = "EUR_GBP" },             # t=3.13。5期間プラス、陽性年95%、Top500に19設定・5指標で非常に頑健
-    { target = "EUR_JPY",       ref = "AUD_NZD" },             # t=2.99。5期間すべてプラス、2021年以降も+0.692%。複数指標で再現
-    { target = "AUD_JPY",       ref = "EUR_GBP" },             # t=2.99。5期間すべてプラス、Top500に6設定・4指標
-    { target = "GBP_USD",       ref = "EUR_GBP" },             # t=2.89。Top500に18設定・5指標。特定パラメータ依存が小さい
-    { target = "GBP_JPY",       ref = "AUD_NZD" },             # t=2.72。5期間すべてプラス、複数設定で上位に残る
-    { target = "CAD_JPY",       ref = "AUD_NZD" },             # t=2.49。順位以上に期間安定性が高く、5期間すべてプラス
-    { target = "OIL_USD",       ref = "GOLD_USD" },            # t=3.16。5期間すべてプラス。ただし値動きが大きいため高ボラ枠
+# symbol_pairs = [
+#     # =========================================================
+#     # 本命
+#     # =========================================================
+#     { target = "OIL_USD",       ref = "COPPER_USD" },          # t=4.11。5期間すべてプラス、Top500に13設定・6指標。今回最有力
+#     { target = "AUD_USD",       ref = "EUR_GBP" },             # t=3.13。5期間プラス、陽性年95%、Top500に19設定・5指標で非常に頑健
+#     { target = "EUR_JPY",       ref = "AUD_NZD" },             # t=2.99。5期間すべてプラス、2021年以降も+0.692%。複数指標で再現
+#     { target = "AUD_JPY",       ref = "EUR_GBP" },             # t=2.99。5期間すべてプラス、Top500に6設定・4指標
+#     { target = "GBP_USD",       ref = "EUR_GBP" },             # t=2.89。Top500に18設定・5指標。特定パラメータ依存が小さい
+#     { target = "GBP_JPY",       ref = "AUD_NZD" },             # t=2.72。5期間すべてプラス、複数設定で上位に残る
+#     { target = "CAD_JPY",       ref = "AUD_NZD" },             # t=2.49。順位以上に期間安定性が高く、5期間すべてプラス
+#     { target = "OIL_USD",       ref = "GOLD_USD" },            # t=3.16。5期間すべてプラス。ただし値動きが大きいため高ボラ枠
 
 
-    # =========================================================
-    # 第二候補
-    # =========================================================
-    { target = "OIL_USD",       ref = "NZD_USD" },             # 5期間すべて強いプラス、2021年以降+0.803%。上位設定数がやや少ない
-    { target = "GBP_JPY",       ref = "USSPX500_Futures" },    # 5期間すべてプラス、直近+0.470%。ただし単一設定への依存が強め
-    { target = "GBP_JPY",       ref = "UK100_Futures" },       # 5期間プラス、2021年以降+0.547%、Top500に複数設定
-    { target = "NZD_USD",       ref = "EUR_GBP" },             # 5期間すべてプラス。EUR_GBP系エッジの横展開として有望
-    { target = "CAD_JPY",       ref = "EUR_GBP" },             # 5期間すべてプラス。安定しているが直近の期待値はやや小さい
-    { target = "TRY_JPY",       ref = "USD_CHF" },             # 5期間プラス、直近+0.409%。TRY絡みのためリスク面は慎重に評価
-    { target = "NQ100_Futures", ref = "GBP_CHF" },             # 5期間プラス、直近+0.805%。ただしパラメータ依存がやや強い
-    { target = "NQ100_Futures", ref = "TRY_JPY" },             # rankは低めだが5期間プラス、2021年以降+1.371%と直近が強い
-    { target = "EUR_JPY",       ref = "SILVER_USD" },          # 5期間すべてプラス。ただし上位設定が少なく再現性を追加確認したい
-    { target = "AUD_JPY",       ref = "SILVER_USD" },          # 5期間すべてプラス、陽性年80%。設定数が少ないため第二候補
+#     # =========================================================
+#     # 第二候補
+#     # =========================================================
+#     { target = "OIL_USD",       ref = "NZD_USD" },             # 5期間すべて強いプラス、2021年以降+0.803%。上位設定数がやや少ない
+#     { target = "GBP_JPY",       ref = "USSPX500_Futures" },    # 5期間すべてプラス、直近+0.470%。ただし単一設定への依存が強め
+#     { target = "GBP_JPY",       ref = "UK100_Futures" },       # 5期間プラス、2021年以降+0.547%、Top500に複数設定
+#     { target = "NZD_USD",       ref = "EUR_GBP" },             # 5期間すべてプラス。EUR_GBP系エッジの横展開として有望
+#     { target = "CAD_JPY",       ref = "EUR_GBP" },             # 5期間すべてプラス。安定しているが直近の期待値はやや小さい
+#     { target = "TRY_JPY",       ref = "USD_CHF" },             # 5期間プラス、直近+0.409%。TRY絡みのためリスク面は慎重に評価
+#     { target = "NQ100_Futures", ref = "GBP_CHF" },             # 5期間プラス、直近+0.805%。ただしパラメータ依存がやや強い
+#     { target = "NQ100_Futures", ref = "TRY_JPY" },             # rankは低めだが5期間プラス、2021年以降+1.371%と直近が強い
+#     { target = "EUR_JPY",       ref = "SILVER_USD" },          # 5期間すべてプラス。ただし上位設定が少なく再現性を追加確認したい
+#     { target = "AUD_JPY",       ref = "SILVER_USD" },          # 5期間すべてプラス、陽性年80%。設定数が少ないため第二候補
 
 
-    # =========================================================
-    # 第三候補
-    # =========================================================
-    { target = "TRY_JPY",       ref = "US30_Futures" },        # rank1・t=4.38だが2021年以降+0.069%まで低下。古いエッジ依存の疑い
-    { target = "USD_JPY",       ref = "EUR_JPY" },             # 5期間プラスだが2021年以降+0.081%と直近エッジがかなり薄い
-    { target = "TRY_JPY",       ref = "NQ100_Futures" },       # 上位設定は多いが2021年以降-0.220%。近年の弱体化が問題
-    { target = "TRY_JPY",       ref = "USSPX500_Futures" },    # 全期間では強いが2021年以降-0.179%。古い期間への依存が大きい
-    { target = "OIL_USD",       ref = "UK100_Futures" },       # 5期間プラスだが2021年以降+0.082%まで縮小
-    { target = "CHF_JPY",       ref = "UK100_Futures" },       # 期間安定性はあるが期待値そのものは比較的小さい
-    { target = "EUR_AUD",       ref = "SILVER_USD" },          # 直近+0.274%だが1期間マイナス、上位設定数も少ない
-    { target = "AUD_JPY",       ref = "GOLD_USD" },            # 5期間プラスだがほぼ単一設定依存のため優先度を下げる
-    { target = "USD_JPY",       ref = "USSPX500_Futures" },    # 直近+0.565%は魅力だが、別パラメータでの再現性が弱い
-    { target = "US30_Futures",  ref = "GBP_CHF" },             # 5期間プラス・複数設定あり。ただし指数系なので別途リスク確認
-    { target = "OIL_USD",       ref = "SILVER_USD" },          # 直近+1.720%と非常に強いが、順位と再現設定数ではまだ弱い
-    { target = "CHF_JPY",       ref = "SILVER_USD" },          # 5期間プラスだが2021年以降+0.048%で、現在のエッジはかなり薄い
-]
+#     # =========================================================
+#     # 第三候補
+#     # =========================================================
+#     { target = "TRY_JPY",       ref = "US30_Futures" },        # rank1・t=4.38だが2021年以降+0.069%まで低下。古いエッジ依存の疑い
+#     { target = "USD_JPY",       ref = "EUR_JPY" },             # 5期間プラスだが2021年以降+0.081%と直近エッジがかなり薄い
+#     { target = "TRY_JPY",       ref = "NQ100_Futures" },       # 上位設定は多いが2021年以降-0.220%。近年の弱体化が問題
+#     { target = "TRY_JPY",       ref = "USSPX500_Futures" },    # 全期間では強いが2021年以降-0.179%。古い期間への依存が大きい
+#     { target = "OIL_USD",       ref = "UK100_Futures" },       # 5期間プラスだが2021年以降+0.082%まで縮小
+#     { target = "CHF_JPY",       ref = "UK100_Futures" },       # 期間安定性はあるが期待値そのものは比較的小さい
+#     { target = "EUR_AUD",       ref = "SILVER_USD" },          # 直近+0.274%だが1期間マイナス、上位設定数も少ない
+#     { target = "AUD_JPY",       ref = "GOLD_USD" },            # 5期間プラスだがほぼ単一設定依存のため優先度を下げる
+#     { target = "USD_JPY",       ref = "USSPX500_Futures" },    # 直近+0.565%は魅力だが、別パラメータでの再現性が弱い
+#     { target = "US30_Futures",  ref = "GBP_CHF" },             # 5期間プラス・複数設定あり。ただし指数系なので別途リスク確認
+#     { target = "OIL_USD",       ref = "SILVER_USD" },          # 直近+1.720%と非常に強いが、順位と再現設定数ではまだ弱い
+#     { target = "CHF_JPY",       ref = "SILVER_USD" },          # 5期間プラスだが2021年以降+0.048%で、現在のエッジはかなり薄い
+# ]
 
 signal_type_list = [
     "change",
@@ -176,12 +140,6 @@ ranking_period = [2001, 2020]
 
 # エクストラコスト
 #extra_cost_pct = 0.1
-
-position_sizing   = false
-vol_lookback_days = 60     # ボラを測る窓（日）
-target_vol_pct    = 1.0     # 1取引あたりの目標日次ボラ%。平均サイズが1前後になる値に
-max_size          = 3.0
-min_size          = 0.2
 
 # 売買フィルタ。指定した指標の値が filter_max 以下の日だけエントリーする。
 # adx は「トレンドの強さ」で方向を持たないため単独売買には使えないが、
