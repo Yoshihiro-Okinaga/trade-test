@@ -49,7 +49,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 MAX_WORKERS = min(32, os.cpu_count() or 1)
 if sys.platform == "darwin":  # Macの場合
-    save_dir = Path.home() / "Dropbox" / "trade_test_results"
+    save_dir = Path.home() / "Dropbox" / "Private" / "trade_test_results"
     save_dir.mkdir(parents=True, exist_ok=True)
     SAVE_PATH = str(save_dir) + "/"
 else:  # Windowsなどの場合

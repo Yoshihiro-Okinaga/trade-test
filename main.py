@@ -62,7 +62,7 @@ def main():
     config = backtest_config.BackTestConfig(config_data)
     if sys.platform == "darwin":  # Macの場合
         # Macのホームディレクトリ直下のDropboxを指定
-        save_dir = Path.home() / "Dropbox" / "trade_test_results"
+        save_dir = Path.home() / "Dropbox" / "Private" / "trade_test_results"
         save_dir.mkdir(parents=True, exist_ok=True)  # フォルダがなければ作成
     else:  # Windowsなどの場合
         #save_dir = Path("./")
@@ -140,7 +140,7 @@ def main():
     df_ranking = format_param_columns(df_ranking)
 
     MAX_MAIN_ROWS = 10000
-    csv_opts = dict(index=False, encoding="utf-8", float_format=f"%.{ROUND_DIGITS}f")
+    csv_opts = dict(index=False, encoding="utf-8", float_format=f"%.{ROUND_DIGITS}f", lineterminator="\r\n")
     is_large = len(df_ranking) > MAX_MAIN_ROWS
     main_frame = df_ranking.head(MAX_MAIN_ROWS) if is_large else df_ranking
     main_frame.to_csv(RANKING_OUTPUT_FILE, **csv_opts)
