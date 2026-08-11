@@ -1,4 +1,3 @@
-
 """
 walk-forward 検証
 
@@ -49,7 +48,13 @@ from concurrent.futures import ProcessPoolExecutor
 # 単体テストしやすいよう、モジュール読み込み時ではなく関数内で import する。
 
 MAX_WORKERS = min(32, os.cpu_count() or 1)
-SAVE_PATH = "./"#"../TestResult/"
+if sys.platform == "darwin":  # Macの場合
+    save_dir = Path.home() / "Dropbox" / "trade_test_results"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    SAVE_PATH = str(save_dir) + "/"
+else:  # Windowsなどの場合
+    #SAVE_PATH = "./"
+    SAVE_PATH = "../TestResult/"
 
 # ============================================================================
 # 純粋なロジック（外部依存なし。ここだけで単体テストできる）
@@ -110,11 +115,48 @@ def mean_std_t(n, s, ss):
     return mean, std, t
 
 
-def score_of(metric, n, s, ss):
-    """選抜スコアを返す。metric: 't_value' / 'average_pct' / 'total_pct'。"""
+def year_t_value(year_stats, lo, hi):
+    """年ごとの平均損益率を1サンプルとして t値を計算する。
+
+    取引数そのものではなく、複数年にわたって平均損益が安定している戦略を
+    高く評価するための選抜指標。取引が1件以上ある年だけを使う。
+    """
+    year_means = [
+        su / c
+        for year, (c, su, _sq, _wi) in year_stats.items()
+        if lo <= year <= hi and c > 0
+    ]
+    n_years = len(year_means)
+    if n_years <= 1:
+        return float("nan")
+
+    mean = sum(year_means) / n_years
+    var = sum((value - mean) ** 2 for value in year_means) / (n_years - 1)
+    std = math.sqrt(var) if var > 0 else 0.0
+    return (mean / std * math.sqrt(n_years)) if std > 0 else float("nan")
+
+
+def score_of(metric, n, s, ss, year_stats=None, lo=None, hi=None):
+    """選抜スコアを返す。
+
+    metric:
+        t_value                 : 従来の取引単位 t値
+        year_t_value            : 年ごとの平均損益率を1サンプルとした t値
+        lower_confidence_bound  : 平均損益 - 1標準誤差
+        average_pct             : 平均損益率
+        total_pct               : 損益率合計
+    """
     mean, std, t = mean_std_t(n, s, ss)
     if metric == "t_value":
         return t
+    if metric == "year_t_value":
+        if year_stats is None or lo is None or hi is None:
+            return float("nan")
+        return year_t_value(year_stats, lo, hi)
+    if metric == "lower_confidence_bound":
+        if std <= 0 or n <= 1:
+            return float("nan")
+        return mean - std / math.sqrt(n)
     if metric == "average_pct":
         return mean
     if metric == "total_pct":
@@ -151,7 +193,9 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
             _, _, is_t = mean_std_t(n, s, ss)
             if math.isnan(is_t) or is_t < min_is_t:
                 continue
-        score = score_of(metric, n, s, ss)
+        score = score_of(
+            metric, n, s, ss, combo["years"], train_start, train_end
+        )
         if score is None or (isinstance(score, float) and math.isnan(score)):
             continue
         scored.append((score, combo, n, s, ss))

@@ -210,14 +210,6 @@ class BackTestConfig:
                 return 0.0
         return 0.0
 
-    def width_of(self, signal_type: str) -> float:
-        """指標に対応する閾値の幅を返す。未設定ならデフォルト。
-        リストが設定されている場合は先頭の値を返す。"""
-        value = self.threshold_width.get(signal_type, self.default_threshold_width)
-        if isinstance(value, (list, tuple)):
-            return value[0]
-        return value
-
     def widths_of(self, signal_type: str) -> list:
         """指標に対応する閾値の候補を一覧で返す。
         config に数値を書けば1件、リストを書けばその全件を試せる。
