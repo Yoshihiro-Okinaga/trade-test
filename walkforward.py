@@ -409,7 +409,7 @@ def collect_oos_trades(config, records):
     return trades
 
 
-def build_and_write_equity(config, records):
+def build_and_write_equity(config, wf, records):
     try:
         trades = collect_oos_trades(config, records)
     except Exception as e:
@@ -420,7 +420,7 @@ def build_and_write_equity(config, records):
         return
 
     curve, stats = build_equity(trades)
-    eq_path = SAVE_PATH + "walkforward_equity.csv"
+    eq_path = SAVE_PATH + f"walkforward_equity_{wf['select_metric']}.csv"
     with open(eq_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["exit_date", "profit_pct",
@@ -447,7 +447,7 @@ def build_and_write_equity(config, records):
 
 def write_outputs(records, folds, wf):
     # 1) 選抜の明細（フォールドごとに何を選び、未知期間でどうだったか）
-    sel_path = SAVE_PATH + "walkforward_selection.csv"
+    sel_path = SAVE_PATH + f"walkforward_selection_{wf['select_metric']}.csv"
     with open(sel_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -475,7 +475,7 @@ def write_outputs(records, folds, wf):
         per_fold[key] = (n + r["oos_trades"], s + r["oos_sum"],
                          ss + r["oos_sumsq"], w + r["oos_wins"])
 
-    sum_path = SAVE_PATH + "walkforward_summary.csv"
+    sum_path = SAVE_PATH + f"walkforward_summary_{wf['select_metric']}.csv"
     with open(sum_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["test_start", "test_end", "oos_trades",
@@ -638,7 +638,7 @@ def run():
     # --- エクイティカーブ＋最大DD（選抜された戦略だけ二次パスで再計算）---
     # 本体プロセスに指標キャッシュを仕込んでから、選抜済み task を再計算する。
     backtest.init_worker(config, ref_cache, target_cache)
-    build_and_write_equity(config, all_records)
+    build_and_write_equity(config, wf, all_records)
 
     end_time = datetime.datetime.now()
     duration = end_time - start_time
