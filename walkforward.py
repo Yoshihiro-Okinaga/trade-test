@@ -31,10 +31,17 @@ walk-forward 検証
     config.toml に [walkforward] セクションを足してから、
         python walkforward.py
     出力:
-        walkforward_selection.csv  … 各フォールドで何を選び、検証期間でどうだったか
-        walkforward_summary.csv    … フォールド別＋全体の未知期間成績
-        walkforward_equity.csv     … 未知トレードを実現日順に連結した累積リターン
-    コンソール: 残存率・未知成績・閾値スキャン・最大ドローダウン
+        walkforward_{metric}.csv  … 統合表（1行=1未知トレード＋その戦略メタ＋学習成績）。
+                                     旧 selection / summary / equity はこの表の集計ビューに相当し、
+                                     フォールド別成績・選抜一覧・累積リターンはここから再現できる。
+                                     OOSトレードが0だった選抜戦略も、トレード列を空にして1行残す。
+    コンソール: 残存率・未知成績・フォールド別成績・閾値スキャン・最大ドローダウン
+
+    実運用シグナル（別モード）:
+        python walkforward.py live
+    直近 train_years 年で「今の最良戦略」を選び、それが現在出しているシグナル
+    （オープン建玉・本日の新規シグナル・直近決済）を live_signals.csv とコンソールに出す。
+    ranking_period に関係なく常に最新データを基準にする。検証(上)とは別の実行。
 """
 import os
 import sys
@@ -87,6 +94,13 @@ def make_folds(min_year, max_year, train_years, test_years, step_years, mode):
         folds.append((train_start, train_end, test_start, test_end))
         test_start += step_years
     return folds
+
+
+def n_years_with_trades(year_stats, lo, hi):
+    """学習期間 [lo, hi] のうち、トレードが1件以上ある年の数を返す。
+    「複数年にまたがって効いているか」を測る補助（統合表の is_years 列に使う）。"""
+    return sum(1 for year, (c, _su, _sq, _wi) in year_stats.items()
+               if lo <= year <= hi and c > 0)
 
 
 def agg_years(year_stats, lo, hi):
@@ -228,6 +242,7 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
             "test_start": test_start, "test_end": test_end,
             "task": combo["task"], "target": combo["target"],
             "is_trades": is_n, "is_mean_pct": is_mean, "is_t": is_t,
+            "is_years": n_years_with_trades(combo["years"], train_start, train_end),
             "oos_trades": oos_n, "oos_sum": oos_s, "oos_sumsq": oos_ss,
             "oos_wins": oos_w, "oos_mean_pct": oos_mean,
         })
@@ -392,6 +407,7 @@ def collect_oos_trades(config, records):
         df, _corr, _msg = backtest.calc_trade_results(config, *task)
         if df is None or df.empty:
             continue
+        ref_s, tgt_s, sig, counter, excess, width, hold, start, sma = task
         pair = f"{task[1]} ← {task[0]}"
         for r in recs:
             ts, te = r["test_start"], r["test_end"]
@@ -399,12 +415,20 @@ def collect_oos_trades(config, records):
             sub = df[(df["year"] >= ts) & (df["year"] <= te)]
             for row in sub.itertuples():
                 trades.append({
+                    "signal_date": getattr(row, "signal_date", ""),
                     "exit_date": row.exit_date,
                     "entry_date": row.entry_date,
                     "profit_pct": float(row.profit_pct),
                     "size": float(getattr(row, "size", 1.0)),
                     "pair": pair,
                     "test_period": f"{ts}-{te}",
+                    # 統合表用の戦略メタ＋学習成績（equity 出力には影響しない）
+                    "target": tgt_s, "ref": ref_s, "signal_type": sig,
+                    "counter_trade": counter, "use_excess_return": excess,
+                    "threshold_width": width, "hold_days": hold,
+                    "start_days": start, "sma_period": sma,
+                    "is_trades": r["is_trades"], "is_mean_pct": r["is_mean_pct"],
+                    "is_t": r["is_t"], "is_years": r.get("is_years", ""),
                 })
     return trades
 
@@ -420,15 +444,6 @@ def build_and_write_equity(config, wf, records):
         return
 
     curve, stats = build_equity(trades)
-    eq_path = SAVE_PATH + f"walkforward_equity_{wf['select_metric']}.csv"
-    with open(eq_path, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["exit_date", "profit_pct",
-                    "cumulative_pct", "cumulative_sized_pct", "pair", "test_period"])
-        for row in curve:
-            w.writerow([str(row["exit_date"])[:10], f"{row['profit_pct']:.6f}",
-                        f"{row['cumulative_pct']:.6f}", f"{row['cumulative_sized_pct']:.6f}",
-                        row["pair"], row["test_period"]])
 
     n = stats["n"]
     print("\n=== エクイティ（未知トレードを実現日で連結。等額・非複利＝1取引1単位を加算）===")
@@ -442,32 +457,68 @@ def build_and_write_equity(config, wf, records):
         print(f"  DD区間: {str(pk['exit_date'])[:10]}（山 {pk['cumulative_pct']:+.1f}%）"
               f" → {str(tr['exit_date'])[:10]}（谷 {tr['cumulative_pct']:+.1f}%）")
 
-    print(f"出力: {eq_path}")
+    # 出力は統合表1枚のみ（equity/selection/summary はこの表の集計ビューに相当）。
+    write_unified(curve, records, wf)
+
+
+UNIFIED_COLUMNS = [
+    "test_period", "target", "ref", "signal_type", "counter_trade",
+    "use_excess_return", "threshold_width", "hold_days", "start_days", "sma_period",
+    "is_trades", "is_mean_pct", "is_t", "is_years",
+    "signal_date", "entry_date", "exit_date", "profit_pct", "cumulative_pct",
+]
+
+
+def write_unified(curve, records, wf):
+    """3出力を統合した1枚の表を書き出す。
+    各行 = 1 OOSトレード（＋その戦略のメタ情報と学習成績）。
+    OOSトレードが0だった選抜戦略も、トレード列を空にして1行残す（情報を落とさない）。
+    フォールド別サマリや選抜一覧は、この表を集計/ユニーク化すれば再現できる。"""
+    def num(v, fmt):
+        if v is None or v == "":
+            return ""
+        try:
+            if isinstance(v, float) and math.isnan(v):
+                return ""
+        except TypeError:
+            pass
+        return format(v, fmt)
+
+    path = SAVE_PATH + f"walkforward_{wf['select_metric']}.csv"
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(UNIFIED_COLUMNS)
+        # 1) トレード行
+        for row in curve:
+            w.writerow([
+                row.get("test_period", ""), row.get("target", ""), row.get("ref", ""),
+                row.get("signal_type", ""), row.get("counter_trade", ""),
+                row.get("use_excess_return", ""), row.get("threshold_width", ""),
+                row.get("hold_days", ""), row.get("start_days", ""), row.get("sma_period", ""),
+                row.get("is_trades", ""), num(row.get("is_mean_pct"), ".9f"),
+                num(row.get("is_t"), ".9f"), row.get("is_years", ""),
+                str(row.get("signal_date", ""))[:10],
+                str(row.get("entry_date", ""))[:10], str(row.get("exit_date", ""))[:10],
+                num(row.get("profit_pct"), ".6f"), num(row.get("cumulative_pct"), ".6f"),
+            ])
+        # 2) OOSトレードが0だった選抜戦略（トレード列は空で1行残す）
+        for r in records:
+            if r.get("oos_trades", 0) != 0:
+                continue
+            ref_s, tgt_s, sig, counter, excess, width, hold, start, sma = r["task"]
+            w.writerow([
+                f"{r['test_start']}-{r['test_end']}", tgt_s, ref_s, sig, counter,
+                excess, width, hold, start, sma,
+                r["is_trades"], num(r["is_mean_pct"], ".9f"),
+                num(r["is_t"], ".9f"), r.get("is_years", ""),
+                "", "", "", "", "",
+            ])
+    print(f"出力: {path}")
 
 
 def write_outputs(records, folds, wf):
-    # 1) 選抜の明細（フォールドごとに何を選び、未知期間でどうだったか）
-    sel_path = SAVE_PATH + f"walkforward_selection_{wf['select_metric']}.csv"
-    with open(sel_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            "test_start", "test_end", "train_start", "train_end",
-            "target", "ref", "signal_type", "counter_trade", "use_excess_return",
-            "threshold_width", "hold_days", "start_days", "sma_period",
-            "is_trades", "is_mean_pct", "is_t", "oos_trades", "oos_mean_pct",
-        ])
-        for r in sorted(records, key=lambda x: (x["test_start"], x["target"])):
-            ref, target, sig, counter, excess, width, hold, start, sma = r["task"]
-            writer.writerow([
-                r["test_start"], r["test_end"], r["train_start"], r["train_end"],
-                target, ref, sig, counter, excess, width, hold, start, sma,
-                r["is_trades"], f"{r['is_mean_pct']:.9f}",
-                ("" if math.isnan(r["is_t"]) else f"{r['is_t']:.9f}"),
-                r["oos_trades"],
-                ("" if r["oos_trades"] == 0 else f"{r['oos_mean_pct']:.9f}"),
-            ])
-
-    # 2) フォールド別＋全体の未知期間サマリ
+    # 選抜明細・エクイティは統合表 walkforward_{metric}.csv に集約済み。
+    # ここではフォールド別の未知成績（旧 summary.csv 相当）をコンソールに表示する。
     per_fold = {}
     for r in records:
         key = (r["test_start"], r["test_end"])
@@ -475,17 +526,14 @@ def write_outputs(records, folds, wf):
         per_fold[key] = (n + r["oos_trades"], s + r["oos_sum"],
                          ss + r["oos_sumsq"], w + r["oos_wins"])
 
-    sum_path = SAVE_PATH + f"walkforward_summary_{wf['select_metric']}.csv"
-    with open(sum_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["test_start", "test_end", "oos_trades",
-                         "oos_mean_pct", "oos_t", "oos_win_rate"])
-        for (ts, te) in sorted(per_fold):
-            n, s, ss, w = per_fold[(ts, te)]
-            mean, std, t = mean_std_t(n, s, ss)
-            win = (w / n * 100) if n else float("nan")
-            writer.writerow([ts, te, n, f"{mean:.9f}",
-                             ("" if math.isnan(t) else f"{t:.9f}"), f"{win:.4f}"])
+    print("\n=== フォールド別 未知成績 ===")
+    print(f"{'期間':>11}{'取引':>7}{'平均%':>10}{'t値':>8}{'勝率%':>8}")
+    for (ts, te) in sorted(per_fold):
+        n, s, ss, w = per_fold[(ts, te)]
+        mean, _std, t = mean_std_t(n, s, ss)
+        win = (w / n * 100) if n else float("nan")
+        tstr = "―" if math.isnan(t) else f"{t:.2f}"
+        print(f"{f'{ts}-{te}':>11}{n:>7}{mean:>+10.4f}{tstr:>8}{win:>8.1f}")
 
     # --- コンソールに要点（過大評価がどれだけ剥がれたか）---
     tot_is_n = sum(r["is_trades"] for r in records)
@@ -508,7 +556,7 @@ def write_outputs(records, folds, wf):
     print(f"未知期間の総取引数          : {tot_n:,}")
     print(f"未知期間の t値              : {oos_t:.3f}（独立仮定の近似）")
     print(f"未知期間の勝率              : {oos_win:.2f}%")
-    print(f"\n出力: {sel_path} / {sum_path}")
+    print(f"\n出力: walkforward_{wf['select_metric']}.csv（統合表1枚）")
 
 
 def run():
@@ -738,7 +786,9 @@ def run_live(recent_closed=5):
             held = int(np.busday_count(np.datetime64(ed, "D"), np.datetime64(last_date, "D")))
             open_rows.append({
                 "pair": pair, "position": row.position,
+                "signal_date": getattr(row, "signal_date", ""),
                 "entry_date": ed, "entry_price": row.entry_price,
+                "exit_date": getattr(row, "exit_date", ""),
                 "held_days": held, "hold_days": hold_days,
                 "remaining": max(hold_days - held, 0),
                 "is_new": (str(ed)[:10] == str(last_date)[:10]),
@@ -749,6 +799,7 @@ def run_live(recent_closed=5):
             for row in closed.sort_values("exit_date").tail(recent_closed).itertuples():
                 recent_rows.append({
                     "pair": pair, "position": row.position,
+                    "signal_date": getattr(row, "signal_date", ""),
                     "entry_date": row.entry_date, "exit_date": row.exit_date,
                     "profit_pct": row.profit_pct,
                 })
@@ -790,17 +841,19 @@ def run_live(recent_closed=5):
     live_path = SAVE_PATH + "live_signals.csv"
     with open(live_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["type", "pair", "position", "entry_date", "entry_price",
+        w.writerow(["type", "pair", "position", "signal_date", "entry_date", "entry_price",
                     "held_days", "remaining_days", "is_new_today", "exit_date",
                     "profit_pct", "is_t", "is_mean_pct"])
         for r in sorted(open_rows, key=lambda x: x["entry_date"], reverse=True):
-            w.writerow(["OPEN", r["pair"], r["position"], str(r["entry_date"])[:10],
+            w.writerow(["OPEN", r["pair"], r["position"], str(r.get("signal_date", ""))[:10],
+                        str(r["entry_date"])[:10],
                         f"{r['entry_price']:.4f}", r["held_days"], r["remaining"],
-                        int(r["is_new"]), "", "", f"{r['is_t']:.4f}",
-                        f"{r['is_mean_pct']:.4f}"])
+                        int(r["is_new"]), str(r.get("exit_date", ""))[:10], "",
+                        f"{r['is_t']:.4f}", f"{r['is_mean_pct']:.4f}"])
         for r in sorted(recent_rows, key=lambda x: x["exit_date"], reverse=True):
-            w.writerow(["CLOSED", r["pair"], r["position"], str(r["entry_date"])[:10],
-                        "", "", "", "", str(r["exit_date"])[:10],
+            w.writerow(["CLOSED", r["pair"], r["position"], str(r.get("signal_date", ""))[:10],
+                        str(r["entry_date"])[:10],
+                        "", "", "", str(r["exit_date"])[:10],
                         f"{r['profit_pct']:.4f}", "", ""])
     print(f"\n出力: {live_path}")
     print("\n※ これは「いまの推奨ポジション」であって、将来の利益を保証するものでは"

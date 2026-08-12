@@ -1,4 +1,5 @@
 
+
 import operator
 import time
 import pandas as pd
@@ -82,6 +83,9 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     ref_signals = merged["ref_signal"].to_numpy()
     target_shifts = merged["target_exit"].to_numpy()
     target_changes = merged["target_change"].to_numpy()
+    # シグナル確定日 = エントリー日の start_days 営業日前（ref_signal は shift(start_days) 済み）。
+    # start_days=1 なら通常は前営業日。休日・データ欠けがあっても実際の取引日で拾う。
+    signal_dates = merged["日付"].shift(start_days).to_list()
 
     # 指標ごとの閾値。center を中心に ±width を超えたら売買シグナルとする。
     # center=0 の指標（bb, change, sma, macd, di）は従来と同じ挙動になる。
@@ -154,10 +158,13 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
                 # 「まだ決済日が来ていない建玉（＝いま保有中のオープンポジション）」として
                 # 記録する。損益は未確定なので NaN。
                 if getattr(config, "emit_open_positions", False):
+                    # 決済予定日 = エントリーの営業日 hold_days 先（データ末尾より先なので見積り）。
+                    planned_exit = date + pd.tseries.offsets.BDay(hold_days)
                     results.append({
                         "position": POS_NAME[i],
+                        "signal_date": signal_dates[idx],
                         "entry_date": date,
-                        "exit_date": pd.NaT,
+                        "exit_date": planned_exit,
                         "entry_price": entry_price,
                         "exit_price": float("nan"),
                         "profit": float("nan"),
@@ -168,8 +175,8 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
                         "is_open": True,
                     })
                     if config.no_overlap:
-                        # 予定決済日（営業日 hold_days 先）まで同方向の新規をロック。
-                        next_entry_ok_date[i] = date + pd.tseries.offsets.BDay(hold_days)
+                        # 予定決済日まで同方向の新規をロック。
+                        next_entry_ok_date[i] = planned_exit
                 continue
 
             exit_date = exit_dates[idx]
@@ -199,6 +206,7 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
 
             results.append({
                 "position": POS_NAME[i],
+                "signal_date": signal_dates[idx],
                 "entry_date": date,
                 "exit_date": exit_date,
                 "entry_price": entry_price,
@@ -365,6 +373,3 @@ def run_one(config, task):
         result["task_elapsed_seconds"] = time.perf_counter() - task_start
 
     return result
-
-
-

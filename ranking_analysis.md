@@ -5,7 +5,7 @@
 
 > **大前提**：これは in-sample（全期間当てはめ）。t_value も期間別平均も、パラメータを
 > 全期間で選んだ後の記述統計であり、過剰最適化を含む。ここで良く見えた候補は「仮説」であって、
-> walk-forward の切り分け（discriminate.py）を通して初めて信用できる。
+> walk-forward の切り分け（学習/検証を分離した OOS 評価）を通して初めて信用できる。
 
 ---
 
@@ -16,7 +16,9 @@
   （例：rank 5-8 が同一の AUD_USD←EUR_GBP change）。ペア単位の分析では重複排除して扱った。
 - **対象が FX だけでない**：Index（JAPAN255 / US30 / USSPX500 / UK100 / DAX / NQ100 の各 Futures）と
   Commodity（GOLD / SILVER / OIL / COPPER / PLATINUM）も ref / target に含む。
-  これまでの walk-forward は **FX 限定**だったので、Index・Commodity は評価基盤自体が未検証の領域。
+  当時の walk-forward は **FX 中心**で、Index・Commodity は評価基盤（コスト設定・データ品質）が
+  FX と同水準に検証されていない領域だった。※現在の config は symbol_groups に index / commodity を
+  含めているが、基盤の健全性が FX と同等かは引き続き要確認（README「残る宿題」参照）。
 
 ---
 
@@ -92,9 +94,10 @@ EUR_GBP からも FX メジャーの高コスト圏からも独立した、注�
 1. **すべて in-sample**。283k 組もあれば「5 期間すべて陽」は偶然でも一定数出る。maximin フィルタは
    選抜バイアスを減らすが消さない。上記候補は**仮説**で、①④でやったように walk-forward の切り分け
    （self・別レッグとの対決＋年減衰診断）を通すまで信用しない。
-2. **Index・Commodity は walk-forward 未検証の領域**。walkforward の config は FX 限定だったため、
+2. **Index・Commodity は基盤の健全性が要確認の領域**。当時の walkforward は FX 中心だったため、
+   （※現在は config に含まれているが基盤検証は別途必要。）
    これらの評価基盤（コスト設定・カレンダー・データ品質）が FX と同水準に検証されているか未確認。
-   NQ100←US30 を追う前に、まず Index グループを walkforward に入れて基盤の健全性を確かめる必要がある。
+   NQ100←US30 を追う前に、まず Index グループの基盤（コスト・データ品質）の健全性を確かめる必要がある。
 3. **コストは込み**だが、Index/Commodity のコスト設定（DAX cost=3.0、GOLD cost=1.0 等）が
    現実的か、価格スケールに対して妥当かは別途確認が要る。
 4. **EUR_GBP 発火の別 target は分散にならない**。GOLD←EUR_GBP や US30←EUR_GBP が安定でも、
