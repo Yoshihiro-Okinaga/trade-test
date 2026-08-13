@@ -557,11 +557,12 @@ def write_outputs(records, folds, wf):
     print(f"\n出力: walkforward_{wf['select_metric']}.csv（統合表1枚）")
 
 
-def run():
+def run(recent_closed=5):
     import tomllib
     import backtest
     import market_data
     import backtest_config
+    import numpy as np
 
     start_time = datetime.datetime.now()
 
@@ -577,9 +578,6 @@ def run():
     wf = read_wf_params(config_data)
 
     # 前提が崩れるケースを先に知らせる
-    if "Test" in config.signal_type_list:
-        print("警告: signal_type に 'Test' が含まれています。'Test' は全期間の相関で"
-              "指標を選ぶため、walk-forward の前提（未来を見ない）が崩れます。")
     if any(bool(x) for x in config.use_excess_return):
         print("注意: use_excess_return=true のドリフトは全期間平均で計算されます。"
               "厳密な leak-free 評価には use_excess_return=[false] を推奨します。")
@@ -597,6 +595,12 @@ def run():
     print("指標を事前計算しています...", flush=True)
     ref_cache, target_cache = market_data.build_caches(config)
     print(f"事前計算 完了（ref {len(ref_cache)} 件 / target {len(target_cache)} 件）")
+
+    # データ最終日（＝「いま」の基準日）を求める。
+    last_date = None
+    for _key, tdf in target_cache.items():
+        d = tdf["日付"].max()
+        last_date = d if last_date is None else max(last_date, d)
 
     # --- 全組み合わせの年別統計を集める（ここが重い。main と同じ並列化）---
     combos = []
@@ -632,6 +636,13 @@ def run():
     for combo in combos:
         all_years.update(combo["years"].keys())
     min_year, max_year = min(all_years), max(all_years)
+    # live
+    train_start = max_year - wf["train_years"] + 1
+    live_fold = (train_start, max_year, max_year, max_year)
+    live_records = select_for_fold(combos, live_fold, wf["select_metric"],
+                                   wf["select_per"], wf["select_top_k"],
+                                   wf["min_is_trades"], wf["min_is_t"])
+
     # ranking_period が指定されていれば、walk-forward の対象年もその範囲に収める。
     # これで「まず 2001-2020 で前進検証 → 2021 以降は最終テストまで手つかずで温存」
     # という段階的な使い方ができる（学習も検証もこの範囲内だけで行う）。
@@ -686,89 +697,20 @@ def run():
     backtest.init_worker(config, ref_cache, target_cache)
     build_and_write_equity(config, wf, all_records)
 
-    end_time = datetime.datetime.now()
-    duration = end_time - start_time
-    print(f"実験開始時刻: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"実験終了時刻: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"総実行時間: {duration}")
-
-
-def run_live(recent_closed=5):
-    """実運用シグナル出力モード（`python walkforward.py live`）。
-
-    「いま running させたら何を売買するか」を体感するためのモード。
-    walk-forward と同じ選抜ロジックを使い、直近 train_years 年を学習期間として
-    今の最良戦略を銘柄ごとに選び、その戦略が現在出しているシグナルを表示する:
-      - 現在のオープン建玉（まだ決済日が来ていない保有中ポジション）
-      - 直近の決済済みトレード（参考）
-    選抜規則は walk-forward で検証したものと同一なので、実運用とズレない。
-    ただし未来は分からないので、これは「今この瞬間の推奨」であって成績保証ではない。
-    """
-    import tomllib
-    import backtest
-    import market_data
-    import backtest_config
-    import numpy as np
-
-    config_path = Path(__file__).parent / "config.toml"
-    try:
-        with open(config_path, "rb") as f:
-            config_data = tomllib.load(f)
-    except FileNotFoundError:
-        print(f"エラー: {config_path} が見つかりません。")
-        sys.exit(1)
-
-    config = backtest_config.BackTestConfig(config_data)
-    wf = read_wf_params(config_data)
-
-    print("指標を事前計算しています...", flush=True)
-    ref_cache, target_cache = market_data.build_caches(config)
-    backtest.init_worker(config, ref_cache, target_cache)
-
-    # データ最終日（＝「いま」の基準日）を求める。
-    last_date = None
-    for _key, tdf in target_cache.items():
-        d = tdf["日付"].max()
-        last_date = d if last_date is None else max(last_date, d)
-
-    # --- 全組み合わせの年別統計（選抜のため。emit_open はまだ False）---
-    tasks = build_tasks(config)
-    print(f"組み合わせ数: {len(tasks):,} / 集計中...", flush=True)
-    combos = []
-    for task in tasks:
-        r = collect_year_stats(task)
-        if r is not None:
-            combos.append(r)
-    if not combos:
-        print("有効なトレードがある組み合わせがありませんでした。")
-        return
-
-    all_years = set()
-    for c in combos:
-        all_years.update(c["years"].keys())
-    max_year = max(all_years)
-    train_start = max_year - wf["train_years"] + 1
-
-    # 「いま」の選抜: 直近 train_years 年を学習に使う（検証枠は使わないので便宜上 max_year）。
-    live_fold = (train_start, max_year, max_year, max_year)
-    records = select_for_fold(combos, live_fold, wf["select_metric"],
-                              wf["select_per"], wf["select_top_k"],
-                              wf["min_is_trades"], wf["min_is_t"])
-    if not records:
+    if not live_records:
         print("選抜条件を満たす戦略がありませんでした（min_is_trades / min_is_t を緩めてください）。")
-        return
 
     print(f"\n{'='*72}")
     print(f" 実運用シグナル")
     print(f"  基準日（データ最終日）: {str(last_date)[:10]}")
     print(f"  選抜: 直近 {train_start}–{max_year} 年で学習 / {wf['select_per']}ごと上位"
           f"{wf['select_top_k']} / min_is_t={wf['min_is_t']}")
-    print(f"  選抜された戦略: {len(records)} 本")
+    print(f"  選抜された戦略: {len(live_records)} 本")
     print(f"{'='*72}")
 
     # --- 選抜戦略を emit_open 有効で再計算し、オープン建玉と直近決済を集める ---
     open_rows, recent_rows = [], []
-    for rec in records:
+    for rec in live_records:
         task = rec["task"]
         df, _corr, _msg = backtest.calc_trade_results(config, True, *task)
         if df is None or df.empty:
@@ -866,10 +808,12 @@ def run_live(recent_closed=5):
     print("\n※ これは「いまの推奨ポジション」であって、将来の利益を保証するものでは"
           "ありません。実際に張る前に必ず小さいサイズ・紙トレードから。")
 
+    end_time = datetime.datetime.now()
+    duration = end_time - start_time
+    print(f"実験開始時刻: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"実験終了時刻: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"総実行時間: {duration}")
+
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "live":
-        run_live()
-    else:
-        run()
-
+    run()
