@@ -22,8 +22,6 @@ walk-forward 検証
     - use_excess_return=true のドリフト（相場方向の除去量）は、元コードでは全期間平均
       で計算される。厳密な leak-free を求めるなら use_excess_return=[false] で回すこと。
       本モジュールはそれ以外の未来情報の混入は排除している。
-    - signal_type に "Test"（インサンプル相関で指標を選ぶ）が含まれると、その選択自体が
-      全期間 leak になるため walk-forward の前提が崩れる。含まれていれば警告する。
     - t値は各トレードを独立とみなす近似（トレード間・銘柄間の相関は補正しない）。
       main.py と同じ前提なので、相対比較の目安として使うこと。
 
@@ -783,7 +781,14 @@ def run_live(recent_closed=5):
         opens = df[df["is_open"] == True]
         for row in opens.itertuples():
             ed = row.entry_date
-            held = int(np.busday_count(np.datetime64(ed, "D"), np.datetime64(last_date, "D")))
+            is_pending = bool(getattr(row, "is_pending", False))
+            if is_pending:
+                # 最終日などに出た新規シグナル。エントリーはまだ（予定日）。
+                held = 0
+                is_new = True
+            else:
+                held = int(np.busday_count(np.datetime64(ed, "D"), np.datetime64(last_date, "D")))
+                is_new = (str(ed)[:10] == str(last_date)[:10])
             open_rows.append({
                 "pair": pair, "position": row.position,
                 "signal_date": getattr(row, "signal_date", ""),
@@ -791,7 +796,7 @@ def run_live(recent_closed=5):
                 "exit_date": getattr(row, "exit_date", ""),
                 "held_days": held, "hold_days": hold_days,
                 "remaining": max(hold_days - held, 0),
-                "is_new": (str(ed)[:10] == str(last_date)[:10]),
+                "is_new": is_new, "is_pending": is_pending,
                 "is_t": rec["is_t"], "is_mean_pct": rec["is_mean_pct"],
             })
         closed = df[df["is_open"] == False].dropna(subset=["exit_date"])
@@ -808,24 +813,25 @@ def run_live(recent_closed=5):
     def arrow(pos):
         return "▲買い" if pos == "long" else "▼売り"
 
-    print("\n■ 現在のオープン建玉（いま保有中＝実運用ならこのポジションを持っている）")
+    print("\n■ 現在のオープン建玉／未エントリーの新規シグナル")
     if open_rows:
-        open_rows.sort(key=lambda r: (r["entry_date"]), reverse=True)
-        print(f"  {'銘柄(target←ref)':32s}{'売買':8s}{'建玉日':12s}{'建値':>10s}"
-              f"{'経過':>5s}{'残':>4s}  IS_t")
+        open_rows.sort(key=lambda r: (r["is_pending"], r["entry_date"]), reverse=True)
+        print(f"  {'銘柄(target←ref)':30s}{'売買':7s}{'シグナル日':12s}{'建玉/予定':11s}"
+              f"{'予定決済':11s}{'状態':>10s}  IS_t")
         for r in open_rows:
-            tag = "  ★本日の新規シグナル" if r["is_new"] else ""
-            print(f"  {r['pair']:32s}{arrow(r['position']):8s}"
-                  f"{str(r['entry_date'])[:10]:12s}{r['entry_price']:>10.4f}"
-                  f"{r['held_days']:>4d}日{r['remaining']:>3d}日  {r['is_t']:.2f}{tag}")
-        news = [r for r in open_rows if r["is_new"]]
-        if news:
-            print(f"\n  → 本日({str(last_date)[:10]})の新規シグナル: {len(news)} 件"
-                  f"（上の ★ 印。次の取引でエントリー）")
+            status = ("★新規(予定)" if r["is_pending"]
+                      else ("★本日建玉" if r["is_new"] else "保有中"))
+            print(f"  {r['pair']:30s}{arrow(r['position']):7s}"
+                  f"{str(r['signal_date'])[:10]:12s}{str(r['entry_date'])[:10]:11s}"
+                  f"{str(r['exit_date'])[:10]:11s}{status:>10s}  {r['is_t']:.2f}")
+        pend = [r for r in open_rows if r["is_pending"]]
+        if pend:
+            print(f"\n  → 未エントリーの新規シグナル（最終日発火）: {len(pend)} 件"
+                  f"（シグナル確定済み。上の予定日で建てる）")
         else:
-            print(f"\n  → 本日({str(last_date)[:10]})の新規シグナルはなし（既存の保有のみ）")
+            print(f"\n  → 未エントリーの新規シグナルはなし（既存の保有のみ）")
     else:
-        print("  現在オープンの建玉はありません（どの戦略も直近でシグナルを出していない）。")
+        print("  現在オープンの建玉・新規シグナルはありません。")
 
     print("\n■ 直近の決済済みトレード（参考）")
     if recent_rows:
@@ -844,10 +850,12 @@ def run_live(recent_closed=5):
         w.writerow(["type", "pair", "position", "signal_date", "entry_date", "entry_price",
                     "held_days", "remaining_days", "is_new_today", "exit_date",
                     "profit_pct", "is_t", "is_mean_pct"])
-        for r in sorted(open_rows, key=lambda x: x["entry_date"], reverse=True):
-            w.writerow(["OPEN", r["pair"], r["position"], str(r.get("signal_date", ""))[:10],
+        for r in sorted(open_rows, key=lambda x: (x["is_pending"], x["entry_date"]), reverse=True):
+            row_type = "PENDING" if r["is_pending"] else "OPEN"
+            entry_price = "" if r["is_pending"] else f"{r['entry_price']:.4f}"
+            w.writerow([row_type, r["pair"], r["position"], str(r.get("signal_date", ""))[:10],
                         str(r["entry_date"])[:10],
-                        f"{r['entry_price']:.4f}", r["held_days"], r["remaining"],
+                        entry_price, r["held_days"], r["remaining"],
                         int(r["is_new"]), str(r.get("exit_date", ""))[:10], "",
                         f"{r['is_t']:.4f}", f"{r['is_mean_pct']:.4f}"])
         for r in sorted(recent_rows, key=lambda x: x["exit_date"], reverse=True):

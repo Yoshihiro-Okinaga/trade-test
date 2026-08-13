@@ -84,7 +84,6 @@ signal_type_list = [
     "di",
     "stoch",
     #"streak",
-    #"Test"
 ]
 
 hold_days_list = [

@@ -166,16 +166,22 @@ class MarketData:
         ref["ref_shift"] = ref["ref_base"].shift(sma_period)
         change_pct = (ref["ref_base"] - ref["ref_shift"]) / ref["ref_shift"] * 100
         ref["ref_signal_change"] = change_pct.shift(start_days)
+        # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
+        ref["ref_signal_change_now"] = change_pct
 
         # sma
         sma = ref["ref_base"].rolling(sma_period).mean()
         sma_pct = (ref["ref_base"] - sma) / sma * 100
         ref["ref_signal_sma"] = sma_pct.shift(start_days)
+        # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
+        ref["ref_signal_sma_now"] = sma_pct
 
         # bb
         bb_std = ref["ref_base"].rolling(sma_period).std()
         bb = (ref["ref_base"] - sma) / bb_std   # 何σ乖離しているか（z-score）
         ref["ref_signal_bb"] = bb.shift(start_days)
+        # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
+        ref["ref_signal_bb_now"] = bb
         
         # macd（ヒストグラムのゼロ交差を +1 / -1 / 0 で表す）
         # macd 本体は価格スケールに比例するため、値そのものを閾値と比べると
@@ -195,6 +201,8 @@ class MarketData:
         )
         macd_cross = macd_cross.where(macd_hist.notna() & prev_hist.notna())
         ref["ref_signal_macd"] = macd_cross.shift(start_days)
+        # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
+        ref["ref_signal_macd_now"] = macd_cross
 
         # rsi
         delta = ref["ref_base"].diff()
@@ -205,6 +213,8 @@ class MarketData:
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
         ref["ref_signal_rsi"] = rsi.shift(start_days)
+        # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
+        ref["ref_signal_rsi_now"] = rsi
 
         # ADX and DI
         high = ref["高値"]
@@ -229,6 +239,8 @@ class MarketData:
         minus_di = 100 * minus_dm.rolling(sma_period).mean() / atr
         di_diff = plus_di - minus_di
         ref["ref_signal_di"] = di_diff.shift(start_days)
+        # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
+        ref["ref_signal_di_now"] = di_diff
 
         # ADX（トレンドの強さ。方向を持たないので単独売買には使わず、
         # フィルタ専用として使う。config の filter_signal_type で指定する）
@@ -241,6 +253,8 @@ class MarketData:
         high_max = ref["高値"].rolling(sma_period).max()
         stoch_k = 100 * (ref["ref_base"] - low_min) / (high_max - low_min)
         ref["ref_signal_stoch"] = stoch_k.shift(start_days)
+        # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
+        ref["ref_signal_stoch_now"] = stoch_k
 
         # streak（何日連続で上げ／下げたか）
         # 3日連続で上げたら +3、2日連続で下げたら -2 のように符号付きで表す。
@@ -252,6 +266,8 @@ class MarketData:
         streak_group = (diff_sign != diff_sign.shift(1)).cumsum()
         streak_length = diff_sign.groupby(streak_group).cumcount() + 1
         ref["ref_signal_streak"] = (streak_length * diff_sign).shift(start_days)
+        # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
+        ref["ref_signal_streak_now"] = streak_length * diff_sign
 
         self.ref = ref
         return ref

@@ -29,30 +29,11 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
 
     other_message = ""
     
-    if signal_type != "Test":
-        ref["ref_signal"] = ref[f"ref_signal_{signal_type}"]
-    else:
-        corr_abs = 0
-        for signal_type_1, signal_type_2 in combinations(SignalType, 2):
-            signal_1 = ref[f"ref_signal_{signal_type_1}"]
-            signal_2 = ref[f"ref_signal_{signal_type_2}"]
-            ref["tmp_product"] = signal_1 * signal_2
-    
-            for signal in (-1, 1):
-                ref["tmp_signal"] = ref["tmp_product"].where(ref["tmp_product"] * signal > 0)
-                if ref["tmp_signal"].count() < config.min_trade_count:
-                    del ref["tmp_signal"]
-                    continue
-    
-                merged_tmp = pd.merge(ref, target, on="日付", suffixes=("_Ref", "_Target"))
-                corr_tmp = merged_tmp["target_change_pct"].corr(merged_tmp["tmp_signal"])
-                if abs(corr_tmp) > abs(corr_abs):
-                    corr_abs = corr_tmp
-                    ref["ref_signal"] = ref["tmp_signal"]
-                    other_message = f"（Test: {signal_type_1} * {signal_type_2} * {signal}）"
-                del ref["tmp_signal"]
-    
-            del ref["tmp_product"]
+    ref["ref_signal"] = ref[f"ref_signal_{signal_type}"]
+    # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。無ければ None。
+    now_col = f"ref_signal_{signal_type}_now"
+    if now_col in ref.columns:
+        ref["ref_signal_now"] = ref[now_col]
 
 
     # === 日付で結合（inner join）===
@@ -81,6 +62,8 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
     exit_dates = merged["exit_date"].to_list()                    # Timestamp のまま保持
     target_closes = merged["target_base"].to_numpy()
     ref_signals = merged["ref_signal"].to_numpy()
+    ref_signals_now = (merged["ref_signal_now"].to_numpy()
+                       if "ref_signal_now" in merged.columns else None)
     target_shifts = merged["target_exit"].to_numpy()
     target_changes = merged["target_change"].to_numpy()
     # シグナル確定日 = エントリー日の start_days 営業日前（ref_signal は shift(start_days) 済み）。
@@ -173,6 +156,7 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
                         "profit_short": None, "profit_short_pct": None,
                         "year": date.year,
                         "is_open": True,
+                        "is_pending": False,
                     })
                     if config.no_overlap:
                         # 予定決済日まで同方向の新規をロック。
@@ -218,8 +202,55 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
                 "profit_short": profit_ls[1],
                 "profit_short_pct": profit_ls_pct[1],
                 "year": date.year,
-                "is_open": False
+                "is_open": False,
+                "is_pending": False,
             })
+
+    # === pending シグナル（最終 start_days 本の生シグナル＝エントリーが未来）===
+    # live 用（emit_open_positions のときのみ）。最終日などに出た「まだ建てていない
+    # 新規シグナル」を、予定エントリー日・予定決済日つきで拾う。生シグナル(shift前)を
+    # 使い、本体ループと同じ判定・no_overlap を適用するのでロジックはズレない。
+    # entry_price は未来なので NaN、is_pending=True で通常のオープン建玉と区別する。
+    if getattr(config, "emit_open_positions", False) and ref_signals_now is not None:
+        n_rows = len(merged)
+        for j in range(max(0, n_rows - start_days), n_rows):
+            sig_now = ref_signals_now[j]
+            if pd.isna(sig_now):
+                continue
+            if filter_values is not None:
+                fv = filter_values[j]
+                if pd.isna(fv) or fv > config.filter_max:
+                    continue
+            sig_date = dates[j]
+            planned_entry = sig_date + pd.tseries.offsets.BDay(start_days)
+            planned_exit = planned_entry + pd.tseries.offsets.BDay(hold_days)
+            signal_dev_now = sig_now - threshold_center
+            for i in range(2):
+                if counter_trade and not OPERATORS_COUNTER[i](signal_dev_now, -POS_RATE[i] * threshold_width):
+                    continue
+                if not counter_trade and not OPERATORS[i](signal_dev_now, POS_RATE[i] * threshold_width):
+                    continue
+                # すでに同方向を予定決済日まで保有中なら、pending は出さない。
+                if (config.no_overlap and next_entry_ok_date[i] is not None
+                        and planned_entry < next_entry_ok_date[i]):
+                    continue
+                results.append({
+                    "position": POS_NAME[i],
+                    "signal_date": sig_date,
+                    "entry_date": planned_entry,   # 予定エントリー日（未来）
+                    "exit_date": planned_exit,     # 予定決済日（未来）
+                    "entry_price": float("nan"),
+                    "exit_price": float("nan"),
+                    "profit": float("nan"),
+                    "profit_pct": float("nan"),
+                    "profit_long": None, "profit_long_pct": None,
+                    "profit_short": None, "profit_short_pct": None,
+                    "year": planned_entry.year,
+                    "is_open": True,
+                    "is_pending": True,
+                })
+                if config.no_overlap:
+                    next_entry_ok_date[i] = planned_exit
 
     # === 年ごとに集計 ===
     df_results = pd.DataFrame(results)
