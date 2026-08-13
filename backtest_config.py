@@ -116,14 +116,6 @@ class BackTestConfig:
         # 0.0 なら従来どおり影響なし。値を振って main.py / walkforward.py を回すと、
         # 「摩擦をどこまで乗せても期待値がプラスで残るか」を選抜込みで検証できる。
         self.extra_cost_pct: float = config_data.get("extra_cost_pct", 0.0)
-
-        # === 実運用シグナル出力用 ===
-        # True のとき、まだ決済日が来ていない建玉（オープン）も df に記録する。
-        # 「いま保有中／今出ているシグナル」を取り出すためのモード。
-        # 通常のバックテスト/選抜/回帰テストでは必ず False（既定）に保つこと
-        # （オープンは損益 NaN なので、選抜統計に混ぜてはいけない）。
-        self.emit_open_positions: bool = config_data.get("emit_open_positions", False)
-
         self.trade_code_type: str = config_data.get("trade_code_type", "all")
         self.min_trade_count: int = config_data.get("min_trade_count", 10)
         self.counter_trade: List[bool] = config_data.get("counter_trade", [False])

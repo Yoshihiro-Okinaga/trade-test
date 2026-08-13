@@ -258,7 +258,7 @@ def collect_year_stats(task):
     import backtest  # ワーカー側で解決
 
     config = backtest._WORKER_CONFIG
-    df, _corr, _msg = backtest.calc_trade_results(config, *task)
+    df, _corr, _msg = backtest.calc_trade_results(config, False, *task)
     if df is None or df.empty:
         return None
 
@@ -402,7 +402,7 @@ def collect_oos_trades(config, records):
 
     trades = []
     for task, recs in by_task.items():
-        df, _corr, _msg = backtest.calc_trade_results(config, *task)
+        df, _corr, _msg = backtest.calc_trade_results(config, False, *task)
         if df is None or df.empty:
             continue
         ref_s, tgt_s, sig, counter, excess, width, hold, start, sma = task
@@ -767,11 +767,10 @@ def run_live(recent_closed=5):
     print(f"{'='*72}")
 
     # --- 選抜戦略を emit_open 有効で再計算し、オープン建玉と直近決済を集める ---
-    config.emit_open_positions = True
     open_rows, recent_rows = [], []
     for rec in records:
         task = rec["task"]
-        df, _corr, _msg = backtest.calc_trade_results(config, *task)
+        df, _corr, _msg = backtest.calc_trade_results(config, True, *task)
         if df is None or df.empty:
             continue
         pair = f"{task[1]} ← {task[0]}"

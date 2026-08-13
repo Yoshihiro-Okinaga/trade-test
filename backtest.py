@@ -9,7 +9,7 @@ from backtest_config import BackTestConfig, SignalType
 from market_data import MarketData
 
 
-def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period):
+def calc_trade_results(config : BackTestConfig, is_emit_open_pos : bool, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period):
     if hold_days < 1:
         raise ValueError("hold_daysは1以上を指定してください。")
     if start_days < 1:
@@ -137,10 +137,10 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
 
             if pd.isna(exit_price):
                 # 通常は「決済価格が未確定（保有期間が未来に届いていない）」トレードは
-                # 捨てる。ただし実運用シグナル用に emit_open_positions が有効なときは、
+                # 捨てる。ただし実運用シグナル用に is_emit_open_pos が有効なときは、
                 # 「まだ決済日が来ていない建玉（＝いま保有中のオープンポジション）」として
                 # 記録する。損益は未確定なので NaN。
-                if getattr(config, "emit_open_positions", False):
+                if is_emit_open_pos:
                     # 決済予定日 = エントリーの営業日 hold_days 先（データ末尾より先なので見積り）。
                     planned_exit = date + pd.tseries.offsets.BDay(hold_days)
                     results.append({
@@ -207,11 +207,11 @@ def calc_trade_results(config : BackTestConfig, ref_name, target_name, signal_ty
             })
 
     # === pending シグナル（最終 start_days 本の生シグナル＝エントリーが未来）===
-    # live 用（emit_open_positions のときのみ）。最終日などに出た「まだ建てていない
+    # live 用（is_emit_open_pos のときのみ）。最終日などに出た「まだ建てていない
     # 新規シグナル」を、予定エントリー日・予定決済日つきで拾う。生シグナル(shift前)を
     # 使い、本体ループと同じ判定・no_overlap を適用するのでロジックはズレない。
     # entry_price は未来なので NaN、is_pending=True で通常のオープン建玉と区別する。
-    if getattr(config, "emit_open_positions", False) and ref_signals_now is not None:
+    if is_emit_open_pos and ref_signals_now is not None:
         n_rows = len(merged)
         for j in range(max(0, n_rows - start_days), n_rows):
             sig_now = ref_signals_now[j]
@@ -294,7 +294,7 @@ def run_one(config, task):
     ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period = task
 
     result_base = {}
-    df_results, corr, other_message = calc_trade_results(config, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period)
+    df_results, corr, other_message = calc_trade_results(config, False, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period)
     if corr is not None:
         result_base = {
             "target": target_name,
