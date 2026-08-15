@@ -53,13 +53,13 @@ from concurrent.futures import ProcessPoolExecutor
 # 単体テストしやすいよう、モジュール読み込み時ではなく関数内で import する。
 
 MAX_WORKERS = min(32, os.cpu_count() or 1)
-if sys.platform == "darwin":  # Macの場合
-    save_dir = Path.home() / "Dropbox" / "Private" / "trade_test_results"
-    save_dir.mkdir(parents=True, exist_ok=True)
-    SAVE_PATH = str(save_dir) + "/"
-else:  # Windowsなどの場合
-    #SAVE_PATH = "./"
-    SAVE_PATH = "../TestResult/"
+
+
+def default_save_dir():
+    """通常実行時の出力先を返す。"""
+    if sys.platform == "darwin":
+        return Path.home() / "Dropbox" / "Private" / "trade_test_results"
+    return Path("../TestResult")
 
 # ============================================================================
 # 純粋なロジック（外部依存なし。ここだけで単体テストできる）
@@ -431,7 +431,7 @@ def collect_oos_trades(config, records):
     return trades
 
 
-def build_and_write_equity(config, wf, records):
+def build_and_write_equity(config, wf, records, save_dir):
     try:
         trades = collect_oos_trades(config, records)
     except Exception as e:
@@ -456,7 +456,7 @@ def build_and_write_equity(config, wf, records):
               f" → {str(tr['exit_date'])[:10]}（谷 {tr['cumulative_pct']:+.1f}%）")
 
     # 出力は統合表1枚のみ（equity/selection/summary はこの表の集計ビューに相当）。
-    write_unified(curve, records, wf)
+    write_unified(curve, records, wf, save_dir)
 
 
 UNIFIED_COLUMNS = [
@@ -467,7 +467,7 @@ UNIFIED_COLUMNS = [
 ]
 
 
-def write_unified(curve, records, wf):
+def write_unified(curve, records, wf, save_dir):
     """3出力を統合した1枚の表を書き出す。
     各行 = 1 OOSトレード（＋その戦略のメタ情報と学習成績）。
     OOSトレードが0だった選抜戦略も、トレード列を空にして1行残す（情報を落とさない）。
@@ -482,7 +482,7 @@ def write_unified(curve, records, wf):
             pass
         return format(v, fmt)
 
-    path = SAVE_PATH + f"walkforward_{wf['select_metric']}.csv"
+    path = Path(save_dir) / f"walkforward_{wf['select_metric']}.csv"
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(UNIFIED_COLUMNS)
@@ -557,7 +557,13 @@ def write_outputs(records, folds, wf):
     print(f"\n出力: walkforward_{wf['select_metric']}.csv（統合表1枚）")
 
 
-def run(recent_closed=5):
+def run(
+    recent_closed=5,
+    config_path=None,
+    data_folder=None,
+    save_dir=None,
+    select_metric=None,
+):
     import tomllib
     import backtest
     import market_data
@@ -566,7 +572,14 @@ def run(recent_closed=5):
 
     start_time = datetime.datetime.now()
 
-    config_path = Path(__file__).parent / "config.toml"
+    config_path = (
+        Path(config_path)
+        if config_path is not None
+        else Path(__file__).parent / "config.toml"
+    )
+    save_dir = Path(save_dir) if save_dir is not None else default_save_dir()
+    save_dir.mkdir(parents=True, exist_ok=True)
+
     try:
         with open(config_path, "rb") as f:
             config_data = tomllib.load(f)
@@ -576,6 +589,8 @@ def run(recent_closed=5):
 
     config = backtest_config.BackTestConfig(config_data)
     wf = read_wf_params(config_data)
+    if select_metric is not None:
+        wf["select_metric"] = select_metric
 
     # 前提が崩れるケースを先に知らせる
     if any(bool(x) for x in config.use_excess_return):
@@ -593,7 +608,7 @@ def run(recent_closed=5):
     print(f"組み合わせ数: {len(tasks):,}")
 
     print("指標を事前計算しています...", flush=True)
-    ref_cache, target_cache = market_data.build_caches(config)
+    ref_cache, target_cache = market_data.build_caches(config, data_folder)
     print(f"事前計算 完了（ref {len(ref_cache)} 件 / target {len(target_cache)} 件）")
 
     # データ最終日（＝「いま」の基準日）を求める。
@@ -695,7 +710,7 @@ def run(recent_closed=5):
     # --- エクイティカーブ＋最大DD（選抜された戦略だけ二次パスで再計算）---
     # 本体プロセスに指標キャッシュを仕込んでから、選抜済み task を再計算する。
     backtest.init_worker(config, ref_cache, target_cache)
-    build_and_write_equity(config, wf, all_records)
+    build_and_write_equity(config, wf, all_records, save_dir)
 
     if not live_records:
         print("選抜条件を満たす戦略がありませんでした（min_is_trades / min_is_t を緩めてください）。")
@@ -785,7 +800,7 @@ def run(recent_closed=5):
         print("  直近の決済トレードがありません。")
 
     # --- CSV 出力 ---
-    live_path = SAVE_PATH + "live_signals.csv"
+    live_path = save_dir / "live_signals.csv"
     with open(live_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["type", "pair", "position", "signal_date", "entry_date", "entry_price",

@@ -4,16 +4,20 @@ from pathlib import Path
 from backtest_config import BackTestConfig, SignalType
 
 
-# ワーカープロセスごとに、読み込み済みのCSVデータを保持する
+# 読み込み済みのCSVデータを保持する。
+# テストでは別のデータフォルダを使うため、キャッシュキーにもフォルダを含める。
 DATA_CACHE = {}
 
-DATA_FOLDER = Path(__file__).resolve().parent / "stock-data" / "Manual"
+DEFAULT_DATA_FOLDER = Path(__file__).resolve().parent / "stock-data" / "Manual"
 REQUIRED_COLUMNS = ["日付", "終値", "高値", "安値"]
 
 
 class MarketData:
-    def __init__(self, path: str):
+    def __init__(self, path: str, data_folder=None):
         self.path = path
+        self.data_folder = (
+            Path(data_folder) if data_folder is not None else DEFAULT_DATA_FOLDER
+        )
         self.df = self.load_data(path)
         self.ref = None
         self.target = None
@@ -21,18 +25,21 @@ class MarketData:
 
     # === データ読み込み ===
     def load_data(self, path):
-        if path in DATA_CACHE:
-            return DATA_CACHE[path].copy()
+        cache_key = (str(self.data_folder.resolve()), path)
+        if cache_key in DATA_CACHE:
+            return DATA_CACHE[cache_key].copy()
 
-        if not DATA_FOLDER.is_dir():
+        if not self.data_folder.is_dir():
             raise FileNotFoundError(
-                f"データフォルダが見つかりません: {DATA_FOLDER}"
+                f"データフォルダが見つかりません: {self.data_folder}"
             )
 
-        files = sorted(DATA_FOLDER.rglob(f"{path}.csv"))
+        files = sorted(self.data_folder.rglob(f"{path}.csv"))
 
         if not files:
-            raise FileNotFoundError(f"{path}.csv が見つかりませんでした: {DATA_FOLDER}")
+            raise FileNotFoundError(
+                f"{path}.csv が見つかりませんでした: {self.data_folder}"
+            )
         if len(files) > 1:
             file_list = "\n".join(str(file) for file in files)
             raise RuntimeError(f"{path}.csv が複数見つかりました:\n{file_list}")
@@ -93,10 +100,10 @@ class MarketData:
         if "株式分割" in df.columns:
             df = self._adjust_for_splits(df)
 
-        DATA_CACHE[path] = df
+        DATA_CACHE[cache_key] = df
 
         # 計算中に列を追加するため、キャッシュ本体ではなくコピーを返す
-        return DATA_CACHE[path].copy()
+        return DATA_CACHE[cache_key].copy()
 
     @staticmethod
     def _parse_split_ratio(value):
@@ -273,7 +280,7 @@ class MarketData:
         return ref
 
 
-def build_caches(config):
+def build_caches(config, data_folder=None):
     """必要な指標を、パラメータの組み合わせぶんだけ事前に計算する。
 
     指標は銘柄だけでなくパラメータにも依存するので、キーにパラメータを含める。
@@ -296,7 +303,7 @@ def build_caches(config):
     # なので、作られるキーは従来の必要ぶんと一致し、出力は変わらない。
     all_names = list(dict.fromkeys(list(config.ref_list) + list(config.target_list)))
     for name in all_names:
-        data = MarketData(name)
+        data = MarketData(name, data_folder)
         if name in ref_set:
             for start_days in config.start_days_list:
                 for sma_period in config.sma_period_list:

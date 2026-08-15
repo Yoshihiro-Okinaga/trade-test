@@ -22,6 +22,13 @@ ROUND_DIGITS = 9                            # 小数点以下の桁数（四捨�
 PARAM_COLUMNS = ["threshold_width"]
 
 
+def default_save_dir():
+    """通常実行時の出力先を返す。"""
+    if sys.platform == "darwin":
+        return Path.home() / "Dropbox" / "Private" / "trade_test_results"
+    return Path("../TestResult")
+
+
 def _decimals_needed(values, limit=6):
     """値をすべて表現するのに必要な小数桁数を返す。"""
     needed = 0
@@ -48,25 +55,26 @@ def format_param_columns(df):
         )
     return df
 
-def main():
+def main(config_path=None, data_folder=None, save_dir=None):
     start_time = datetime.datetime.now()
     print(f"ワーカー数: {MAX_WORKERS}")
 
+    config_path = (
+        Path(config_path)
+        if config_path is not None
+        else Path(__file__).parent / "config.toml"
+    )
+    save_dir = Path(save_dir) if save_dir is not None else default_save_dir()
+    save_dir.mkdir(parents=True, exist_ok=True)
+
     try:
-        with open(Path(__file__).parent / "config.toml", "rb") as f:
+        with open(config_path, "rb") as f:
             config_data = tomllib.load(f)
     except FileNotFoundError:
-        print(f"エラー: {Path(__file__).parent / 'config.toml'} が見つかりません。")
+        print(f"エラー: {config_path} が見つかりません。")
         sys.exit(1)
 
     config = backtest_config.BackTestConfig(config_data)
-    if sys.platform == "darwin":  # Macの場合
-        # Macのホームディレクトリ直下のDropboxを指定
-        save_dir = Path.home() / "Dropbox" / "Private" / "trade_test_results"
-        save_dir.mkdir(parents=True, exist_ok=True)  # フォルダがなければ作成
-    else:  # Windowsなどの場合
-        #save_dir = Path("./")
-        save_dir = Path("../TestResult")
 
     RANKING_OUTPUT_FILE = save_dir / "trade_ranking.csv"
     RANKING_OUTPUT_FILE_FULL = save_dir / "trade_ranking_full.csv"
@@ -90,7 +98,7 @@ def main():
     # 指標はタスクごとに計算し直すと同じ計算を何万回も繰り返すことになる。
     # 必要な組み合わせは銘柄×パラメータのぶんだけなので、先にまとめて作る。
     print("指標を事前計算しています...", flush=True)
-    ref_cache, target_cache = market_data.build_caches(config)
+    ref_cache, target_cache = market_data.build_caches(config, data_folder)
     print(f"事前計算 完了（ref {len(ref_cache)} 件 / target {len(target_cache)} 件）")
 
     if config.use_process_pool:
