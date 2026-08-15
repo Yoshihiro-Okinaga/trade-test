@@ -26,7 +26,7 @@ def default_save_dir():
     """通常実行時の出力先を返す。"""
     if sys.platform == "darwin":
         return Path.home() / "Dropbox" / "Private" / "trade_test_results"
-    return Path("../TestResult")
+    return Path("./")
 
 
 def _decimals_needed(values, limit=6):

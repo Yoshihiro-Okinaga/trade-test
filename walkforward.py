@@ -13,12 +13,12 @@ walk-forward 検証
 設計方針:
     売買シミュレーション本体（backtest.calc_trade_results）はそのまま再利用する。
     各パラメータ組み合わせについて、全履歴のトレードを1回だけ計算し、その損益率を
-    「年ごとの十分統計量 (件数, 合計, 二乗和, 勝ち数)」に畳んで持ち帰る。
-    フォールドの区切りは年境界なので、あとはこの年別統計を学習/検証ウィンドウで
-    足し合わせるだけで、再シミュレーションなしに選抜と評価ができる。
+    「(エントリー年, 決済年) ごとの十分統計量」に畳んで持ち帰る。
+    学習・検証では、エントリーから決済までがその期間内で完結したトレードだけを
+    足し合わせる。年境界をまたぐトレードはどちらの期間にも含めない。
 
 制約・注意:
-    - フォールドは年単位で区切る（トレードは「エントリー年」で各年に割り当てる）。
+    - フォールドは年単位で区切り、期間内で完結したトレードだけを使う。
     - use_excess_return=true のドリフト（相場方向の除去量）は、元コードでは全期間平均
       で計算される。厳密な leak-free を求めるなら use_excess_return=[false] で回すこと。
       本モジュールはそれ以外の未来情報の混入は排除している。
@@ -59,7 +59,7 @@ def default_save_dir():
     """通常実行時の出力先を返す。"""
     if sys.platform == "darwin":
         return Path.home() / "Dropbox" / "Private" / "trade_test_results"
-    return Path("../TestResult")
+    return Path("./")
 
 # ============================================================================
 # 純粋なロジック（外部依存なし。ここだけで単体テストできる）
@@ -94,22 +94,41 @@ def make_folds(min_year, max_year, train_years, test_years, step_years, mode):
     return folds
 
 
-def n_years_with_trades(year_stats, lo, hi):
-    """学習期間 [lo, hi] のうち、トレードが1件以上ある年の数を返す。
-    「複数年にまたがって効いているか」を測る補助（統合表の is_years 列に使う）。"""
-    return sum(1 for year, (c, _su, _sq, _wi) in year_stats.items()
-               if lo <= year <= hi and c > 0)
+def period_year_stats(period_stats, lo, hi):
+    """期間内で完結したトレードを、従来どおりエントリー年別にまとめる。"""
+    by_entry_year = {}
+    for (entry_year, exit_year), (c, su, sq, wi) in period_stats.items():
+        if not (lo <= entry_year <= exit_year <= hi):
+            continue
+        old_c, old_s, old_ss, old_w = by_entry_year.get(
+            entry_year, (0, 0.0, 0.0, 0)
+        )
+        by_entry_year[entry_year] = (
+            old_c + c, old_s + su, old_ss + sq, old_w + wi
+        )
+    return by_entry_year
 
 
-def agg_years(year_stats, lo, hi):
-    """年別統計 {year: (n, sum, sumsq, wins)} を [lo, hi] 年で合算する。"""
+def n_years_with_trades(period_stats, lo, hi):
+    """期間内で完結したトレードが1件以上あるエントリー年の数を返す。"""
+    return len(period_year_stats(period_stats, lo, hi))
+
+
+def agg_period_stats(period_stats, lo, hi):
+    """期間内で完結したトレードの十分統計量を合算する。
+
+    entry_year >= lo かつ exit_year <= hi のトレードだけを使う。
+    したがって期間の開始前に建てたトレードや、期間終了後に決済するトレードは
+    IS/OOS のどちらにも混入しない。
+    """
     n = s = ss = w = 0
-    for year, (c, su, sq, wi) in year_stats.items():
-        if lo <= year <= hi:
-            n += c
-            s += su
-            ss += sq
-            w += wi
+    for (entry_year, exit_year), (c, su, sq, wi) in period_stats.items():
+        if not (lo <= entry_year <= exit_year <= hi):
+            continue
+        n += c
+        s += su
+        ss += sq
+        w += wi
     return n, s, ss, w
 
 
@@ -127,16 +146,17 @@ def mean_std_t(n, s, ss):
     return mean, std, t
 
 
-def year_t_value(year_stats, lo, hi):
-    """年ごとの平均損益率を1サンプルとして t値を計算する。
+def year_t_value(period_stats, lo, hi):
+    """期間内で完結したトレードの年平均を1サンプルとして t値を計算する。
 
     取引数そのものではなく、複数年にわたって平均損益が安定している戦略を
-    高く評価するための選抜指標。取引が1件以上ある年だけを使う。
+    高く評価するための選抜指標。年の所属は従来どおりエントリー年を使う。
     """
+    year_stats = period_year_stats(period_stats, lo, hi)
     year_means = [
         su / c
-        for year, (c, su, _sq, _wi) in year_stats.items()
-        if lo <= year <= hi and c > 0
+        for c, su, _sq, _wi in year_stats.values()
+        if c > 0
     ]
     n_years = len(year_means)
     if n_years <= 1:
@@ -148,7 +168,7 @@ def year_t_value(year_stats, lo, hi):
     return (mean / std * math.sqrt(n_years)) if std > 0 else float("nan")
 
 
-def score_of(metric, n, s, ss, year_stats=None, lo=None, hi=None):
+def score_of(metric, n, s, ss, period_stats=None, lo=None, hi=None):
     """選抜スコアを返す。
 
     metric:
@@ -162,9 +182,9 @@ def score_of(metric, n, s, ss, year_stats=None, lo=None, hi=None):
     if metric == "t_value":
         return t
     if metric == "year_t_value":
-        if year_stats is None or lo is None or hi is None:
+        if period_stats is None or lo is None or hi is None:
             return float("nan")
-        return year_t_value(year_stats, lo, hi)
+        return year_t_value(period_stats, lo, hi)
     if metric == "lower_confidence_bound":
         if std <= 0 or n <= 1:
             return float("nan")
@@ -180,7 +200,7 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
                     min_is_t=0.0):
     """1フォールドぶんの選抜と未知期間評価を行い、選ばれた戦略の記録を返す。
 
-    combos: [{"task": (...), "target": name, "years": {year:(n,s,ss,w)}}, ...]
+    combos: [{"task": (...), "target": name, "periods": {(entry_year, exit_year):(n,s,ss,w)}}, ...]
     min_is_t: 品質ゲート。学習期間の t値がこの値未満の候補は選抜対象から外す。
               その結果、良い候補が無い銘柄はその期間「見送り」となり張らない。
               0.0（既定）ならゲート無効で従来どおり全銘柄に張る。t値は選抜時点で
@@ -196,7 +216,7 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
 
     scored = []
     for combo in combos:
-        n, s, ss, w = agg_years(combo["years"], train_start, train_end)
+        n, s, ss, w = agg_period_stats(combo["periods"], train_start, train_end)
         if n < min_is_trades:
             continue
         # 品質ゲート: 学習期間の t値が基準に満たない候補は捨てる。
@@ -206,7 +226,7 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
             if math.isnan(is_t) or is_t < min_is_t:
                 continue
         score = score_of(
-            metric, n, s, ss, combo["years"], train_start, train_end
+            metric, n, s, ss, combo["periods"], train_start, train_end
         )
         if score is None or (isinstance(score, float) and math.isnan(score)):
             continue
@@ -233,14 +253,14 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
     records = []
     for score, combo, is_n, is_s, is_ss in selected:
         is_mean, is_std, is_t = mean_std_t(is_n, is_s, is_ss)
-        oos_n, oos_s, oos_ss, oos_w = agg_years(combo["years"], test_start, test_end)
+        oos_n, oos_s, oos_ss, oos_w = agg_period_stats(combo["periods"], test_start, test_end)
         oos_mean = (oos_s / oos_n) if oos_n > 0 else float("nan")
         records.append({
             "train_start": train_start, "train_end": train_end,
             "test_start": test_start, "test_end": test_end,
             "task": combo["task"], "target": combo["target"],
             "is_trades": is_n, "is_mean_pct": is_mean, "is_t": is_t,
-            "is_years": n_years_with_trades(combo["years"], train_start, train_end),
+            "is_years": n_years_with_trades(combo["periods"], train_start, train_end),
             "oos_trades": oos_n, "oos_sum": oos_s, "oos_sumsq": oos_ss,
             "oos_wins": oos_w, "oos_mean_pct": oos_mean,
         })
@@ -251,10 +271,11 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
 # シミュレーション本体の再利用（重い依存はここで import）
 # ============================================================================
 
-def collect_year_stats(task):
-    """ワーカー実行単位。1つのパラメータ組み合わせについて全履歴のトレードを計算し、
-    損益率(profit_pct)を年別の十分統計量に畳んで返す。
-    config と指標キャッシュは backtest.init_worker が仕込んだグローバルを使う。"""
+def collect_period_stats(task):
+    """1つのパラメータ組み合わせについて全履歴を計算し、
+    損益率を (entry_year, exit_year) ごとの十分統計量に畳んで返す。
+    config と指標キャッシュは backtest.init_worker が仕込んだグローバルを使う。
+    """
     import backtest  # ワーカー側で解決
 
     config = backtest._WORKER_CONFIG
@@ -262,16 +283,23 @@ def collect_year_stats(task):
     if df is None or df.empty:
         return None
 
-    year_stats = {}
-    # groupby は速いが、ここでは numpy で軽く回す
-    years = df["year"].to_numpy()
+    period_stats = {}
+    entry_years = df["entry_year"].to_numpy()
+    exit_years = df["exit_year"].to_numpy()
     pct = df["profit_pct"].to_numpy()
-    for y, p in zip(years, pct):
-        y = int(y)
-        c, s, ss, w = year_stats.get(y, (0, 0.0, 0.0, 0))
-        year_stats[y] = (c + 1, s + float(p), ss + float(p) * float(p), w + (1 if p > 0 else 0))
+    for entry_year, exit_year, p in zip(entry_years, exit_years, pct):
+        key = (int(entry_year), int(exit_year))
+        c, s, ss, w = period_stats.get(key, (0, 0.0, 0.0, 0))
+        value = float(p)
+        period_stats[key] = (
+            c + 1, s + value, ss + value * value, w + (1 if value > 0 else 0)
+        )
 
-    return {"task": tuple(task), "target": task[1], "years": year_stats}
+    return {
+        "task": tuple(task),
+        "target": task[1],
+        "periods": period_stats,
+    }
 
 
 def build_tasks(config):
@@ -409,8 +437,12 @@ def collect_oos_trades(config, records):
         pair = f"{task[1]} ← {task[0]}"
         for r in recs:
             ts, te = r["test_start"], r["test_end"]
-            # 選抜と同じ「エントリー年」基準で検証期間を切り出す
-            sub = df[(df["year"] >= ts) & (df["year"] <= te)]
+            # 選抜時と同じく、検証期間内で建てて期間内で決済した
+            # トレードだけをOOSエクイティへ入れる。
+            sub = df[
+                (df["entry_year"] >= ts)
+                & (df["exit_year"] <= te)
+            ]
             for row in sub.itertuples():
                 trades.append({
                     "signal_date": getattr(row, "signal_date", ""),
@@ -628,7 +660,7 @@ def run(
             initargs=(config, ref_cache, target_cache),
         ) as executor:
             for done, result in enumerate(
-                executor.map(collect_year_stats, tasks, chunksize=chunksize), start=1
+                executor.map(collect_period_stats, tasks, chunksize=chunksize), start=1
             ):
                 if result is not None:
                     combos.append(result)
@@ -636,7 +668,7 @@ def run(
     else:
         backtest.init_worker(config, ref_cache, target_cache)
         for done, task in enumerate(tasks, start=1):
-            result = collect_year_stats(task)
+            result = collect_period_stats(task)
             if result is not None:
                 combos.append(result)
             print(f"\r集計: {done}/{total}", end="", flush=True)
@@ -649,7 +681,9 @@ def run(
     # --- データに実在する年の範囲からフォールドを作る ---
     all_years = set()
     for combo in combos:
-        all_years.update(combo["years"].keys())
+        for entry_year, exit_year in combo["periods"].keys():
+            all_years.add(entry_year)
+            all_years.add(exit_year)
     min_year, max_year = min(all_years), max(all_years)
     # live
     train_start = max_year - wf["train_years"] + 1

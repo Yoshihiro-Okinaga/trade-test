@@ -155,6 +155,8 @@ def calc_trade_results(config : BackTestConfig, is_emit_open_pos : bool, ref_nam
                         "profit_long": None, "profit_long_pct": None,
                         "profit_short": None, "profit_short_pct": None,
                         "year": date.year,
+                        "entry_year": date.year,
+                        "exit_year": planned_exit.year,
                         "is_open": True,
                         "is_pending": False,
                     })
@@ -201,7 +203,12 @@ def calc_trade_results(config : BackTestConfig, is_emit_open_pos : bool, ref_nam
                 "profit_long_pct": profit_ls_pct[0],
                 "profit_short": profit_ls[1],
                 "profit_short_pct": profit_ls_pct[1],
+                # year は既存ランキングとの互換性のため従来どおりエントリー年。
+                # Walk-forward は entry_year / exit_year の両方を見て、期間内で
+                # 完結したトレードだけを使う。これにより年境界の未来情報を防ぐ。
                 "year": date.year,
+                "entry_year": date.year,
+                "exit_year": exit_date.year,
                 "is_open": False,
                 "is_pending": False,
             })
@@ -246,6 +253,8 @@ def calc_trade_results(config : BackTestConfig, is_emit_open_pos : bool, ref_nam
                     "profit_long": None, "profit_long_pct": None,
                     "profit_short": None, "profit_short_pct": None,
                     "year": planned_entry.year,
+                    "entry_year": planned_entry.year,
+                    "exit_year": planned_exit.year,
                     "is_open": True,
                     "is_pending": True,
                 })
