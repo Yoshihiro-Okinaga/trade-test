@@ -1,4 +1,5 @@
 from pathlib import Path
+import datetime
 
 import main
 import walkforward
@@ -6,6 +7,7 @@ import walkforward
 
 PROJECT_DIR = Path(__file__).resolve().parent
 TEST_RESULT_BASE_DIR = (PROJECT_DIR / "../TestResult").resolve()
+#TEST_RESULT_BASE_DIR = (PROJECT_DIR).resolve()
 #TEST_RESULT_DIR = (TEST_RESULT_BASE_DIR / "stock_electric").resolve()
 TEST_RESULT_DIR = TEST_RESULT_BASE_DIR
 TEST_CONFIG_PATH = TEST_RESULT_DIR / "config.toml"
@@ -41,6 +43,7 @@ def validate_test_environment():
 
 def run_regression_test():
     """固定入力から主要CSVを再生成する。差分の判定はGitに任せる。"""
+    start_time = datetime.datetime.now()
     validate_test_environment()
 
     print("=== 回帰テスト: trade ranking ===")
@@ -60,8 +63,10 @@ def run_regression_test():
         )
 
     print("\n=== 回帰テスト完了 ===")
+    end_time = datetime.datetime.now()
     print(f"結果は {TEST_RESULT_DIR} に上書きしました。")
     print("変更の有無は Git の差分で確認してください。")
+    print(f"実行時間: {end_time - start_time}")
 
 
 if __name__ == "__main__":

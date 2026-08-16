@@ -49,7 +49,11 @@ class BackTestConfig:
         # （順序の曖昧さを排除）。[target, ref] の2要素配列も許容する。
         # 空/未指定なら従来どおり symbol_groups × symbol_names の総当たり。
         raw_pairs = config_data.get("symbol_pairs", [])
+        if config_data.get("symbol_pairs_use", False) is False:
+            raw_pairs = []
+
         self.symbol_pairs: List[tuple] = []
+        seen_pairs = set()
         for p in raw_pairs:
             if isinstance(p, dict):
                 target_name, ref_name = p.get("target"), p.get("ref")
@@ -64,7 +68,15 @@ class BackTestConfig:
             for name in (target_name, ref_name):
                 if name not in self.symbols:
                     raise ValueError(f"symbol_pairs に未定義の銘柄があります: {name}")
-            self.symbol_pairs.append((ref_name, target_name))  # task順 (ref, target)
+
+            pair = (ref_name, target_name)  # task順 (ref, target)
+            if pair in seen_pairs:
+                raise ValueError(
+                    f"symbol_pairs に重複があります: "
+                    f"target={target_name}, ref={ref_name}"
+                )
+            seen_pairs.add(pair)
+            self.symbol_pairs.append(pair)
 
         if self.symbol_pairs:
             # 名指しモード: キャッシュ生成と検証がそのまま効くよう ref/target を絞る。
