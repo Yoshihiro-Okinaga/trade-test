@@ -177,6 +177,13 @@ def score_of(metric, n, s, ss, period_stats=None, lo=None, hi=None):
         lower_confidence_bound  : 平均損益 - 1標準誤差
         average_pct             : 平均損益率
         total_pct               : 損益率合計
+        worst_year_pct          : 学習期間の年平均のうち最悪の年（マキシミン）
+        positive_year_ratio     : 陽性年比率 × 平均（一貫性と大きさの合成）
+        half_split_min          : 学習期間を前後半に割り、低い方の平均
+
+    後半3つ（worst_year_pct / positive_year_ratio / half_split_min）は
+    「学習成績の高さ」ではなく「まぐれで高く出にくい性質」を要求する指標。
+    多数の候補から最大を選ぶことで生じる選抜バイアスへの対抗策として用意した。
     """
     mean, std, t = mean_std_t(n, s, ss)
     if metric == "t_value":
@@ -193,6 +200,27 @@ def score_of(metric, n, s, ss, period_stats=None, lo=None, hi=None):
         return mean
     if metric == "total_pct":
         return float(s)
+    if metric in ("worst_year_pct", "positive_year_ratio", "half_split_min"):
+        if period_stats is None or lo is None or hi is None:
+            return float("nan")
+        year_stats = period_year_stats(period_stats, lo, hi)
+        year_means = {y: su / c for y, (c, su, _sq, _wi) in year_stats.items() if c > 0}
+        if not year_means:
+            return float("nan")
+        if metric == "worst_year_pct":
+            # どの年も食えるかを要求する。1年のまぐれ当たりで押し上がった候補を排除。
+            return min(year_means.values())
+        if metric == "positive_year_ratio":
+            # 陽性年比率だけでは同率が多発するので、平均と掛けて大きさも反映する。
+            ratio = sum(1 for v in year_means.values() if v > 0) / len(year_means)
+            return ratio * mean
+        # half_split_min: 学習期間を前後半に割り、両方で効いているかを要求する。
+        mid = (lo + hi) / 2
+        first = [v for y, v in year_means.items() if y <= mid]
+        second = [v for y, v in year_means.items() if y > mid]
+        if not first or not second:
+            return float("nan")
+        return min(sum(first) / len(first), sum(second) / len(second))
     raise ValueError(f"未知の select_metric: {metric!r}")
 
 
@@ -344,16 +372,23 @@ def read_wf_params(config_data):
 
 def max_drawdown(cumulative):
     """累積系列（各点=それまでの損益合計）から最大ドローダウンを返す。
-    戻り値 (max_dd, peak_idx, trough_idx)。max_dd は下落幅で常に非負。"""
-    peak = float("-inf")
-    cur_peak_i = 0
+
+    開始時点の累積損益 0 も山として扱う。peak_idx が None の場合は、
+    最大DDの山が最初のトレードより前（開始時点）にあることを表す。
+    戻り値 (max_dd, peak_idx, trough_idx)。max_dd は下落幅で常に非負。
+    """
+    peak = 0.0
+    cur_peak_i = None
     max_dd = 0.0
-    mdd_peak = mdd_trough = 0
-    for i, v in enumerate(cumulative):
-        if v > peak:
-            peak = v
+    mdd_peak = None
+    mdd_trough = None
+
+    for i, value in enumerate(cumulative):
+        if value > peak:
+            peak = value
             cur_peak_i = i
-        dd = peak - v
+
+        dd = peak - value
         if dd > max_dd:
             max_dd = dd
             mdd_peak = cur_peak_i
@@ -386,8 +421,8 @@ def build_equity(trades):
         final_s = cumulative_sized[-1]
         sized_sum = sum(t.get("size", 1.0) for t in ordered)
     else:
-        mdd, pk, tr, final = 0.0, 0, 0, 0.0
-        mdd_s, pk_s, tr_s, final_s, sized_sum = 0.0, 0, 0, 0.0, 0.0
+        mdd, pk, tr, final = 0.0, None, None, 0.0
+        mdd_s, pk_s, tr_s, final_s, sized_sum = 0.0, None, None, 0.0, 0.0
     return curve, {"final_pct": final, "max_dd_pct": mdd,
                    "peak_idx": pk, "trough_idx": tr, "n": len(curve),
                    "final_sized_pct": final_s, "max_dd_sized_pct": mdd_s,
@@ -482,9 +517,16 @@ def build_and_write_equity(config, wf, records, save_dir):
     print(f"1取引あたり平均       : {stats['final_pct'] / n:+.4f}%")
     print(f"最大ドローダウン      : {stats['max_dd_pct']:.2f}%（累積%ポイント）")
     if stats["max_dd_pct"] > 0:
-        pk = curve[stats["peak_idx"]]
         tr = curve[stats["trough_idx"]]
-        print(f"  DD区間: {str(pk['exit_date'])[:10]}（山 {pk['cumulative_pct']:+.1f}%）"
+        if stats["peak_idx"] is None:
+            peak_text = "開始時点（山 +0.0%）"
+        else:
+            pk = curve[stats["peak_idx"]]
+            peak_text = (
+                f"{str(pk['exit_date'])[:10]}"
+                f"（山 {pk['cumulative_pct']:+.1f}%）"
+            )
+        print(f"  DD区間: {peak_text}"
               f" → {str(tr['exit_date'])[:10]}（谷 {tr['cumulative_pct']:+.1f}%）")
 
     # 出力は統合表1枚のみ（equity/selection/summary はこの表の集計ビューに相当）。

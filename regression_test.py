@@ -6,8 +6,8 @@ import walkforward
 
 PROJECT_DIR = Path(__file__).resolve().parent
 TEST_RESULT_BASE_DIR = (PROJECT_DIR / "../TestResult").resolve()
-TEST_RESULT_DIR = (TEST_RESULT_BASE_DIR / "stock_electric").resolve()
-#TEST_RESULT_DIR = TEST_RESULT_BASE_DIR
+#TEST_RESULT_DIR = (TEST_RESULT_BASE_DIR / "stock_electric").resolve()
+TEST_RESULT_DIR = TEST_RESULT_BASE_DIR
 TEST_CONFIG_PATH = TEST_RESULT_DIR / "config.toml"
 TEST_DATA_FOLDER = TEST_RESULT_BASE_DIR / "stock-data" / "Manual"
 
@@ -16,6 +16,9 @@ TEST_DATA_FOLDER = TEST_RESULT_BASE_DIR / "stock-data" / "Manual"
 WALKFORWARD_METRICS = [
     "lower_confidence_bound",
     "year_t_value",
+    "worst_year_pct",
+    "positive_year_ratio",
+    "half_split_min",
     "t_value",
 ]
 
