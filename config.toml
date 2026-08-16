@@ -326,3 +326,5 @@ select_per = "target"      # "target"(銘柄ごと) / "global"(全体)
 select_top_k = 1           # 各グループから選ぶ戦略数
 min_is_trades = 30         # 選抜に必要な学習期間の最小取引数
 min_is_t = 2.0             # 学習期間のt値がこの値未満の銘柄は見送る。0で無効
+# ポートフォリオ全体で同時に保有できる最大建玉数。0なら無制限。
+max_open_positions = 5

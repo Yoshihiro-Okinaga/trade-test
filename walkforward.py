@@ -287,6 +287,9 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
             "train_start": train_start, "train_end": train_end,
             "test_start": test_start, "test_end": test_end,
             "task": combo["task"], "target": combo["target"],
+            # 同日に複数の新規候補が出たとき、Walk-forward と Live の
+            # 最大建玉制限で、学習時点の選抜スコアが高い戦略を優先する。
+            "selection_score": score,
             "is_trades": is_n, "is_mean_pct": is_mean, "is_t": is_t,
             "is_years": n_years_with_trades(combo["periods"], train_start, train_end),
             "oos_trades": oos_n, "oos_sum": oos_s, "oos_sumsq": oos_ss,
@@ -363,12 +366,54 @@ def read_wf_params(config_data):
         # 品質ゲート: 各銘柄の最良候補でも学習期間の t値がこの値未満なら、
         # その銘柄はその期間は見送る（張らない）。0.0 でゲート無効＝従来どおり。
         "min_is_t": float(wf.get("min_is_t", 0.0)),
+        # ポートフォリオ全体の同時建玉数。0 は無制限。
+        "max_open_positions": int(wf.get("max_open_positions", 0)),
     }
 
 
 # ============================================================================
 # エクイティカーブ / 最大ドローダウン / 閾値スキャン
 # ============================================================================
+
+def limit_open_positions(trades, max_open_positions):
+    """ポートフォリオ全体の同時建玉数を制限する。
+
+    max_open_positions <= 0 は無制限。決済日当日の新規エントリーは許可するため、
+    entry_date 以前に決済する建玉を先に解放する。同日の候補は、未来情報を使わず
+    選抜時点で分かっている selection_score の高い順に採用する。
+    """
+    if max_open_positions <= 0:
+        return list(trades), []
+
+    def priority_key(trade):
+        return (
+            trade["entry_date"],
+            -float(trade.get("selection_score", 0.0)),
+            str(trade.get("pair", "")),
+            str(trade.get("position", "")),
+            str(trade.get("signal_date", "")),
+        )
+
+    accepted = []
+    skipped = []
+    active_exit_dates = []
+
+    for trade in sorted(trades, key=priority_key):
+        entry_date = trade["entry_date"]
+        active_exit_dates = [
+            exit_date for exit_date in active_exit_dates
+            if exit_date > entry_date
+        ]
+
+        if len(active_exit_dates) >= max_open_positions:
+            skipped.append(trade)
+            continue
+
+        accepted.append(trade)
+        active_exit_dates.append(trade["exit_date"])
+
+    return accepted, skipped
+
 
 def max_drawdown(cumulative):
     """累積系列（各点=それまでの損益合計）から最大ドローダウンを返す。
@@ -485,7 +530,10 @@ def collect_oos_trades(config, records):
                     "entry_date": row.entry_date,
                     "profit_pct": float(row.profit_pct),
                     "size": float(getattr(row, "size", 1.0)),
+                    "position": row.position,
                     "pair": pair,
+                    "task": task,
+                    "selection_score": r["selection_score"],
                     "test_period": f"{ts}-{te}",
                     # 統合表用の戦略メタ＋学習成績（equity 出力には影響しない）
                     "target": tgt_s, "ref": ref_s, "signal_type": sig,
@@ -508,11 +556,19 @@ def build_and_write_equity(config, wf, records, save_dir):
         print("\nエクイティ: 未知トレードが取得できませんでした。")
         return
 
+    trades, skipped = limit_open_positions(trades, wf["max_open_positions"])
+    if not trades:
+        print("\nエクイティ: 最大建玉制限の適用後、未知トレードがありませんでした。")
+        return
+
     curve, stats = build_equity(trades)
 
     n = stats["n"]
     print("\n=== エクイティ（未知トレードを実現日で連結。等額・非複利＝1取引1単位を加算）===")
     print(f"未知トレード数       : {n:,}")
+    if wf["max_open_positions"] > 0:
+        print(f"最大同時建玉数       : {wf['max_open_positions']}")
+        print(f"建玉上限による見送り : {len(skipped):,}")
     print(f"累積リターン（合計%） : {stats['final_pct']:+.2f}%")
     print(f"1取引あたり平均       : {stats['final_pct'] / n:+.4f}%")
     print(f"最大ドローダウン      : {stats['max_dd_pct']:.2f}%（累積%ポイント）")
@@ -573,9 +629,14 @@ def write_unified(curve, records, wf, save_dir):
                 str(row.get("entry_date", ""))[:10], str(row.get("exit_date", ""))[:10],
                 num(row.get("profit_pct"), ".6f"), num(row.get("cumulative_pct"), ".6f"),
             ])
-        # 2) OOSトレードが0だった選抜戦略（トレード列は空で1行残す）
+        # 2) 実行されたOOSトレードが0だった選抜戦略。
+        # 元から0件の場合に加え、最大建玉制限ですべて見送られた場合も残す。
+        executed_keys = {
+            (row.get("test_period", ""), row.get("task")) for row in curve
+        }
         for r in records:
-            if r.get("oos_trades", 0) != 0:
+            record_key = (f"{r['test_start']}-{r['test_end']}", r["task"])
+            if record_key in executed_keys:
                 continue
             ref_s, tgt_s, sig, counter, excess, width, hold, start, sma = r["task"]
             w.writerow([
@@ -663,6 +724,8 @@ def run(
 
     config = backtest_config.BackTestConfig(config_data)
     wf = read_wf_params(config_data)
+    if wf["max_open_positions"] < 0:
+        raise ValueError("max_open_positions は 0 以上を指定してください。")
     if select_metric is not None:
         wf["select_metric"] = select_metric
 
@@ -676,7 +739,9 @@ def run(
           f"（{wf['step_years']}年ずつ前進） / 選抜={wf['select_metric']}・"
           f"{wf['select_per']}ごと上位{wf['select_top_k']} / 最小IS取引={wf['min_is_trades']}"
           + (f" / 品質ゲート min_is_t={wf['min_is_t']}" if wf['min_is_t'] > 0
-             else " / 品質ゲートなし"))
+             else " / 品質ゲートなし")
+          + (f" / 最大建玉={wf['max_open_positions']}"
+             if wf["max_open_positions"] > 0 else " / 最大建玉=無制限"))
 
     tasks = build_tasks(config)
     print(f"組み合わせ数: {len(tasks):,}")
@@ -784,8 +849,13 @@ def run(
         print(f"張った枠: {placed} / {max_slots}（見送り {skipped}）")
 
     write_outputs(all_records, folds, wf)
+    if wf["max_open_positions"] > 0:
+        print("※ 上のフォールド別/未知成績は戦略単体の集計で、最大建玉制限前です。")
+        print("  最大建玉制限後の実運用相当成績は、下のエクイティ集計を参照してください。")
 
     # --- 閾値スキャン: min_is_t を変えたときの未知成績（再シミュレーション不要）---
+    if wf["max_open_positions"] > 0:
+        print("\n※ 閾値スキャンは最大建玉制限を適用しない参考値です。")
     scan_thresholds(combos, folds, wf,
                     thresholds=[0.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
 
@@ -806,49 +876,98 @@ def run(
     print(f"  選抜された戦略: {len(live_records)} 本")
     print(f"{'='*72}")
 
-    # --- 選抜戦略を emit_open 有効で再計算し、オープン建玉と直近決済を集める ---
-    open_rows, recent_rows = [], []
+    # --- 選抜戦略を emit_open 有効で再計算し、建玉候補を集める ---
+    # OPEN/CLOSED は一度ポートフォリオ全体に集めて最大建玉制限を適用する。
+    # PENDING はまだ建てていないため枠を消費せず、そのまま表示候補に残す。
+    live_trade_candidates = []
+    pending_rows = []
     for rec in live_records:
         task = rec["task"]
         df, _corr, _msg = backtest.calc_trade_results(config, True, *task)
         if df is None or df.empty:
             continue
+
         target_name = task[1]
         pair = f"{target_name} ← {task[0]}"
         hold_days = task[6]
         last_date = target_last_dates[target_name]
         if "is_open" not in df.columns:
             df["is_open"] = False
-        opens = df[df["is_open"] == True]
-        for row in opens.itertuples():
-            ed = row.entry_date
+
+        for row in df.itertuples():
+            is_open = bool(getattr(row, "is_open", False))
             is_pending = bool(getattr(row, "is_pending", False))
-            if is_pending:
-                # 最終日などに出た新規シグナル。エントリーはまだ（予定日）。
-                held = 0
-                is_new = True
-            else:
-                held = int(np.busday_count(np.datetime64(ed, "D"), np.datetime64(last_date, "D")))
-                is_new = (str(ed)[:10] == str(last_date)[:10])
-            open_rows.append({
+            common = {
                 "pair": pair, "position": row.position,
                 "signal_date": getattr(row, "signal_date", ""),
-                "entry_date": ed, "entry_price": row.entry_price,
+                "entry_date": row.entry_date,
                 "exit_date": getattr(row, "exit_date", ""),
-                "held_days": held, "hold_days": hold_days,
-                "remaining": max(hold_days - held, 0),
-                "is_new": is_new, "is_pending": is_pending,
+                "task": task,
+                "selection_score": rec["selection_score"],
                 "is_t": rec["is_t"], "is_mean_pct": rec["is_mean_pct"],
-            })
-        closed = df[df["is_open"] == False].dropna(subset=["exit_date"])
-        if not closed.empty:
-            for row in closed.sort_values("exit_date").tail(recent_closed).itertuples():
-                recent_rows.append({
-                    "pair": pair, "position": row.position,
-                    "signal_date": getattr(row, "signal_date", ""),
-                    "entry_date": row.entry_date, "exit_date": row.exit_date,
-                    "profit_pct": row.profit_pct,
+                "target_name": target_name, "hold_days": hold_days,
+                "last_date": last_date,
+            }
+
+            if is_pending:
+                pending = dict(common)
+                pending.update({
+                    "entry_price": float("nan"),
+                    "held_days": 0, "remaining": hold_days,
+                    "is_new": True, "is_pending": True,
                 })
+                pending_rows.append(pending)
+                continue
+
+            candidate = dict(common)
+            candidate.update({
+                "entry_price": row.entry_price,
+                "profit_pct": row.profit_pct,
+                "is_open": is_open,
+            })
+            live_trade_candidates.append(candidate)
+
+    accepted_live, skipped_live = limit_open_positions(
+        live_trade_candidates, wf["max_open_positions"]
+    )
+
+    open_rows = list(pending_rows)
+    closed_by_task = {}
+    for trade in accepted_live:
+        if trade["is_open"]:
+            ed = trade["entry_date"]
+            last_date = trade["last_date"]
+            held = int(np.busday_count(
+                np.datetime64(ed, "D"), np.datetime64(last_date, "D")
+            ))
+            open_row = dict(trade)
+            open_row.update({
+                "held_days": held,
+                "remaining": max(trade["hold_days"] - held, 0),
+                "is_new": (str(ed)[:10] == str(last_date)[:10]),
+                "is_pending": False,
+            })
+            open_rows.append(open_row)
+        elif trade.get("exit_date") is not None:
+            closed_by_task.setdefault(trade["task"], []).append(trade)
+
+    # 従来どおり、直近決済は各戦略 recent_closed 件までに絞る。
+    recent_rows = []
+    for task_trades in closed_by_task.values():
+        task_trades.sort(key=lambda trade: trade["exit_date"])
+        for trade in task_trades[-recent_closed:]:
+            recent_rows.append({
+                "pair": trade["pair"], "position": trade["position"],
+                "signal_date": trade.get("signal_date", ""),
+                "entry_date": trade["entry_date"],
+                "exit_date": trade["exit_date"],
+                "profit_pct": trade["profit_pct"],
+            })
+
+    if wf["max_open_positions"] > 0:
+        skipped_open = sum(1 for trade in skipped_live if trade.get("is_open"))
+        print(f"  最大建玉: {wf['max_open_positions']} / "
+              f"上限で見送りとなる現在OPEN候補: {skipped_open}")
 
     # --- レポート出力 ---
     def arrow(pos):
