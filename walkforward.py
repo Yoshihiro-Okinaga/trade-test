@@ -685,11 +685,17 @@ def run(
     ref_cache, target_cache = market_data.build_caches(config, data_folder)
     print(f"事前計算 完了（ref {len(ref_cache)} 件 / target {len(target_cache)} 件）")
 
-    # データ最終日（＝「いま」の基準日）を求める。
-    last_date = None
-    for _key, tdf in target_cache.items():
-        d = tdf["日付"].max()
-        last_date = d if last_date is None else max(last_date, d)
+    # Live の保有日数や「本日建玉」判定は、Target 銘柄自身の最終日を使う。
+    # 全銘柄共通の最大日を使うと、更新が遅れている銘柄まで未来の日付を基準に
+    # 判定してしまう。hold_days が複数あっても Target ごとに1日へまとめる。
+    target_last_dates = {}
+    for (target_name, _hold_days), tdf in target_cache.items():
+        data_last_date = tdf["日付"].max()
+        current_last_date = target_last_dates.get(target_name)
+        if current_last_date is None or data_last_date > current_last_date:
+            target_last_dates[target_name] = data_last_date
+
+    latest_data_date = max(target_last_dates.values(), default=None)
 
     # --- 全組み合わせの年別統計を集める（ここが重い。main と同じ並列化）---
     combos = []
@@ -793,7 +799,8 @@ def run(
 
     print(f"\n{'='*72}")
     print(f" 実運用シグナル")
-    print(f"  基準日（データ最終日）: {str(last_date)[:10]}")
+    print(f"  最新データ日（全Target中）: {str(latest_data_date)[:10]}")
+    print("  建玉判定の基準日: Target銘柄ごとのデータ最終日")
     print(f"  選抜: 直近 {train_start}–{max_year} 年で学習 / {wf['select_per']}ごと上位"
           f"{wf['select_top_k']} / min_is_t={wf['min_is_t']}")
     print(f"  選抜された戦略: {len(live_records)} 本")
@@ -806,8 +813,10 @@ def run(
         df, _corr, _msg = backtest.calc_trade_results(config, True, *task)
         if df is None or df.empty:
             continue
-        pair = f"{task[1]} ← {task[0]}"
+        target_name = task[1]
+        pair = f"{target_name} ← {task[0]}"
         hold_days = task[6]
+        last_date = target_last_dates[target_name]
         if "is_open" not in df.columns:
             df["is_open"] = False
         opens = df[df["is_open"] == True]
@@ -893,7 +902,7 @@ def run(
         for r in sorted(recent_rows, key=lambda x: x["exit_date"], reverse=True):
             w.writerow(["CLOSED", r["pair"], r["position"], str(r.get("signal_date", ""))[:10],
                         str(r["entry_date"])[:10],
-                        "", "", "", str(r["exit_date"])[:10],
+                        "", "", "", "", str(r["exit_date"])[:10],
                         f"{r['profit_pct']:.4f}", "", ""])
     print(f"\n出力: {live_path}")
     print("\n※ これは「いまの推奨ポジション」であって、将来の利益を保証するものでは"
