@@ -34,6 +34,12 @@ exclude_names = [
 # 2001～2015で作ったデータ
 symbol_pairs_use = true
 symbol_pairs = [
+    # Gemini, Clause, ChatGPT の共通候補。全ての指標で強い。
+    { target = "GBP_USD",       ref = "EUR_GBP" },
+    { target = "AUD_USD",       ref = "EUR_GBP" },
+    { target = "OIL_USD",       ref = "COPPER_USD" },
+]
+symbol_pairs_all = [
     # =========================================================
     # Gemini
     # =========================================================
@@ -321,7 +327,7 @@ mode = "rolling"          # "anchored"(開始固定で拡大) / "rolling"(固定
 #   ばらつきを割り引く: "lower_confidence_bound"(平均-k×標準誤差)
 #   時間的な一貫性重視: "year_t_value" / "worst_year_pct"(最悪年) /
 #                       "positive_year_ratio"(陽性年比率×平均) / "half_split_min"(前後半の低い方)
-select_metric = "worst_year_pct"
+select_metric = "t_value"
 select_per = "target"      # "target": Target銘柄ごと / "global": 全戦略まとめて
 select_top_k = 1           # "target"なら各Targetから上位N戦略、"global"なら全候補から上位N戦略を採用
 min_is_trades = 30         # 選抜に必要な学習期間の最小取引数

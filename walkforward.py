@@ -1024,8 +1024,6 @@ def run(
                         "", "", "", "", str(r["exit_date"])[:10],
                         f"{r['profit_pct']:.4f}", "", ""])
     print(f"\n出力: {live_path}")
-    print("\n※ これは「いまの推奨ポジション」であって、将来の利益を保証するものでは"
-          "ありません。実際に張る前に必ず小さいサイズ・紙トレードから。")
 
     end_time = datetime.datetime.now()
     duration = end_time - start_time
