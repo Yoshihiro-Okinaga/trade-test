@@ -593,7 +593,7 @@ UNIFIED_COLUMNS = [
     "test_period", "target", "ref", "signal_type", "counter_trade",
     "use_excess_return", "threshold_width", "hold_days", "start_days", "sma_period",
     "is_trades", "is_mean_pct", "is_t", "is_years",
-    "signal_date", "entry_date", "exit_date", "profit_pct", "cumulative_pct",
+    "position", "signal_date", "entry_date", "exit_date", "profit_pct", "cumulative_pct",
 ]
 
 
@@ -625,7 +625,7 @@ def write_unified(curve, records, wf, save_dir):
                 row.get("hold_days", ""), row.get("start_days", ""), row.get("sma_period", ""),
                 row.get("is_trades", ""), num(row.get("is_mean_pct"), ".9f"),
                 num(row.get("is_t"), ".9f"), row.get("is_years", ""),
-                str(row.get("signal_date", ""))[:10],
+                row.get("position", ""), str(row.get("signal_date", ""))[:10],
                 str(row.get("entry_date", ""))[:10], str(row.get("exit_date", ""))[:10],
                 num(row.get("profit_pct"), ".6f"), num(row.get("cumulative_pct"), ".6f"),
             ])
@@ -644,7 +644,7 @@ def write_unified(curve, records, wf, save_dir):
                 excess, width, hold, start, sma,
                 r["is_trades"], num(r["is_mean_pct"], ".9f"),
                 num(r["is_t"], ".9f"), r.get("is_years", ""),
-                "", "", "", "", "",
+                "", "", "", "", "", "",
             ])
     print(f"出力: {path}")
 

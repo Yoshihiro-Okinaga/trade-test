@@ -322,8 +322,8 @@ mode = "rolling"          # "anchored"(開始固定で拡大) / "rolling"(固定
 #   時間的な一貫性重視: "year_t_value" / "worst_year_pct"(最悪年) /
 #                       "positive_year_ratio"(陽性年比率×平均) / "half_split_min"(前後半の低い方)
 select_metric = "worst_year_pct"
-select_per = "target"      # "target"(銘柄ごと) / "global"(全体)
-select_top_k = 1           # 各グループから選ぶ戦略数
+select_per = "target"      # "target": Target銘柄ごと / "global": 全戦略まとめて
+select_top_k = 1           # "target"なら各Targetから上位N戦略、"global"なら全候補から上位N戦略を採用
 min_is_trades = 30         # 選抜に必要な学習期間の最小取引数
 min_is_t = 2.0             # 学習期間のt値がこの値未満の銘柄は見送る。0で無効
 # ポートフォリオ全体で同時に保有できる最大建玉数。0なら無制限。
