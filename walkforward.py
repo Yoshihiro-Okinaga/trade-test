@@ -49,10 +49,24 @@ import datetime
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 
+from walkforward_config import (
+    SelectionMetric,
+    SelectionScope,
+    WalkForwardConfig,
+)
+from walkforward_fold import WalkForwardFold, make_folds
+from strategy_task import StrategyTask, build_strategy_tasks
+
 # pandas や backtest / market_data といった重い依存は、純粋なロジック関数を
 # 単体テストしやすいよう、モジュール読み込み時ではなく関数内で import する。
 
 MAX_WORKERS = min(32, os.cpu_count() or 1)
+MIN_IS_T_SCAN_THRESHOLDS = (0.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
+YEAR_BASED_SELECTION_METRICS = frozenset({
+    SelectionMetric.WORST_YEAR_PCT,
+    SelectionMetric.POSITIVE_YEAR_RATIO,
+    SelectionMetric.HALF_SPLIT_MIN,
+})
 
 
 def default_save_dir():
@@ -64,35 +78,6 @@ def default_save_dir():
 # ============================================================================
 # 純粋なロジック（外部依存なし。ここだけで単体テストできる）
 # ============================================================================
-
-def make_folds(min_year, max_year, train_years, test_years, step_years, mode):
-    """年境界でフォールドを作る。
-
-    各フォールドは (train_start, train_end, test_start, test_end) の年タプル。
-    最初の検証期間は「初期学習期間ぶん」だけ後ろから始まる。
-    step_years=test_years にすると検証期間が重ならずに時間軸を敷き詰める
-    （＝各未知トレードが1回だけ数えられる）。
-    mode="anchored" は学習開始を min_year に固定して期間を伸ばす。
-    mode="rolling" は学習期間を固定長でスライドさせる。
-    """
-    if train_years < 1 or test_years < 1 or step_years < 1:
-        raise ValueError("train_years / test_years / step_years は1以上にしてください。")
-
-    folds = []
-    test_start = min_year + train_years
-    while test_start + test_years - 1 <= max_year:
-        test_end = test_start + test_years - 1
-        train_end = test_start - 1
-        if mode == "anchored":
-            train_start = min_year
-        elif mode == "rolling":
-            train_start = test_start - train_years
-        else:
-            raise ValueError(f"mode は 'anchored' か 'rolling'。指定値: {mode!r}")
-        folds.append((train_start, train_end, test_start, test_end))
-        test_start += step_years
-    return folds
-
 
 def period_year_stats(period_stats, lo, hi):
     """期間内で完結したトレードを、従来どおりエントリー年別にまとめる。"""
@@ -168,7 +153,7 @@ def year_t_value(period_stats, lo, hi):
     return (mean / std * math.sqrt(n_years)) if std > 0 else float("nan")
 
 
-def score_of(metric, n, s, ss, period_stats=None, lo=None, hi=None):
+def score_of(metric: SelectionMetric, n, s, ss, period_stats=None, lo=None, hi=None):
     """選抜スコアを返す。
 
     metric:
@@ -186,31 +171,31 @@ def score_of(metric, n, s, ss, period_stats=None, lo=None, hi=None):
     多数の候補から最大を選ぶことで生じる選抜バイアスへの対抗策として用意した。
     """
     mean, std, t = mean_std_t(n, s, ss)
-    if metric == "t_value":
+    if metric == SelectionMetric.T_VALUE:
         return t
-    if metric == "year_t_value":
+    if metric == SelectionMetric.YEAR_T_VALUE:
         if period_stats is None or lo is None or hi is None:
             return float("nan")
         return year_t_value(period_stats, lo, hi)
-    if metric == "lower_confidence_bound":
+    if metric == SelectionMetric.LOWER_CONFIDENCE_BOUND:
         if std <= 0 or n <= 1:
             return float("nan")
         return mean - std / math.sqrt(n)
-    if metric == "average_pct":
+    if metric == SelectionMetric.AVERAGE_PCT:
         return mean
-    if metric == "total_pct":
+    if metric == SelectionMetric.TOTAL_PCT:
         return float(s)
-    if metric in ("worst_year_pct", "positive_year_ratio", "half_split_min"):
+    if metric in YEAR_BASED_SELECTION_METRICS:
         if period_stats is None or lo is None or hi is None:
             return float("nan")
         year_stats = period_year_stats(period_stats, lo, hi)
         year_means = {y: su / c for y, (c, su, _sq, _wi) in year_stats.items() if c > 0}
         if not year_means:
             return float("nan")
-        if metric == "worst_year_pct":
+        if metric == SelectionMetric.WORST_YEAR_PCT:
             # どの年も食えるかを要求する。1年のまぐれ当たりで押し上がった候補を排除。
             return min(year_means.values())
-        if metric == "positive_year_ratio":
+        if metric == SelectionMetric.POSITIVE_YEAR_RATIO:
             # 陽性年比率だけでは同率が多発するので、平均と掛けて大きさも反映する。
             ratio = sum(1 for v in year_means.values() if v > 0) / len(year_means)
             return ratio * mean
@@ -224,11 +209,13 @@ def score_of(metric, n, s, ss, period_stats=None, lo=None, hi=None):
     raise ValueError(f"未知の select_metric: {metric!r}")
 
 
-def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
-                    min_is_t=0.0):
+def select_for_fold(combos, fold: WalkForwardFold, metric: SelectionMetric,
+                    select_per: SelectionScope, top_k,
+                    min_is_trades, min_is_t=0.0):
     """1フォールドぶんの選抜と未知期間評価を行い、選ばれた戦略の記録を返す。
 
-    combos: [{"task": (...), "target": name, "periods": {(entry_year, exit_year):(n,s,ss,w)}}, ...]
+    combos: [{"task": StrategyTask, "target": name,
+             "periods": {(entry_year, exit_year):(n,s,ss,w)}}, ...]
     min_is_t: 品質ゲート。学習期間の t値がこの値未満の候補は選抜対象から外す。
               その結果、良い候補が無い銘柄はその期間「見送り」となり張らない。
               0.0（既定）ならゲート無効で従来どおり全銘柄に張る。t値は選抜時点で
@@ -240,7 +227,10 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
     凍結させ、is_t だけを膨らませて偽の高スコアを与える副作用があったため、本番選抜
     からは外した。時間構造の診断は discriminate.py の半減期スイープで行う。
     """
-    train_start, train_end, test_start, test_end = fold
+    train_start = fold.train_start
+    train_end = fold.train_end
+    test_start = fold.test_start
+    test_end = fold.test_end
 
     scored = []
     for combo in combos:
@@ -260,13 +250,13 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
             continue
         scored.append((score, combo, n, s, ss))
 
-    # 決定的に並べる。スコア降順、同点は task タプルで安定させる
+    # 決定的に並べる。スコア降順、同点は StrategyTask のフィールド順で安定させる
     # （実行ごとに順位がブレて出力 diff が壊れるのを防ぐ）。
     scored.sort(key=lambda row: (-row[0], row[1]["task"]))
 
-    if select_per == "global":
+    if select_per == SelectionScope.GLOBAL:
         selected = scored[:top_k]
-    elif select_per == "target":
+    elif select_per == SelectionScope.TARGET:
         per_target = {}
         selected = []
         for row in scored:
@@ -302,7 +292,7 @@ def select_for_fold(combos, fold, metric, select_per, top_k, min_is_trades,
 # シミュレーション本体の再利用（重い依存はここで import）
 # ============================================================================
 
-def collect_period_stats(task):
+def collect_period_stats(task: StrategyTask):
     """1つのパラメータ組み合わせについて全履歴を計算し、
     損益率を (entry_year, exit_year) ごとの十分統計量に畳んで返す。
     config と指標キャッシュは backtest.init_worker が仕込んだグローバルを使う。
@@ -310,7 +300,9 @@ def collect_period_stats(task):
     import backtest  # ワーカー側で解決
 
     config = backtest._WORKER_CONFIG
-    df, _corr, _msg = backtest.calc_trade_results(config, False, *task)
+    df, _corr, _msg = backtest.calc_trade_results(
+        config, False, *task.as_backtest_args()
+    )
     if df is None or df.empty:
         return None
 
@@ -327,48 +319,20 @@ def collect_period_stats(task):
         )
 
     return {
-        "task": tuple(task),
-        "target": task[1],
+        "task": task,
+        "target": task.target_name,
         "periods": period_stats,
     }
 
 
 def build_tasks(config):
-    """main.py と同じ組み合わせを作る（閾値は指標ごとの候補を展開する）。"""
-    return [
-        (ref_name, target_name, signal_type, counter_trade, use_excess_return,
-         threshold_width, hold_days, start_days, sma_period)
-        for ref_name, target_name in config.iter_ref_target()
-        for signal_type in config.signal_type_list
-        for counter_trade in config.counter_trade
-        for use_excess_return in config.use_excess_return
-        for threshold_width in config.widths_of(signal_type)
-        for hold_days in config.hold_days_list
-        for start_days in config.start_days_list
-        for sma_period in config.sma_period_list
-    ]
+    """main.py と同じ StrategyTask の組み合わせを作る。"""
+    return build_strategy_tasks(config)
 
 
 def read_wf_params(config_data):
     """[walkforward] セクションを既定値つきで読む。無ければ全て既定。"""
-    wf = config_data.get("walkforward", {})
-    test_years = int(wf.get("test_years", 2))
-    return {
-        "train_years": int(wf.get("train_years", 8)),
-        "test_years": test_years,
-        # 既定は検証期間ぶんスライド＝未知期間を重ねない
-        "step_years": int(wf.get("step_years", test_years)),
-        "mode": wf.get("mode", "anchored"),
-        "select_metric": wf.get("select_metric", "t_value"),
-        "select_per": wf.get("select_per", "target"),
-        "select_top_k": int(wf.get("select_top_k", 1)),
-        "min_is_trades": int(wf.get("min_is_trades", 30)),
-        # 品質ゲート: 各銘柄の最良候補でも学習期間の t値がこの値未満なら、
-        # その銘柄はその期間は見送る（張らない）。0.0 でゲート無効＝従来どおり。
-        "min_is_t": float(wf.get("min_is_t", 0.0)),
-        # ポートフォリオ全体の同時建玉数。0 は無制限。
-        "max_open_positions": int(wf.get("max_open_positions", 0)),
-    }
+    return WalkForwardConfig.from_config_data(config_data)
 
 
 # ============================================================================
@@ -485,8 +449,8 @@ def scan_thresholds(combos, folds, wf, thresholds):
         recs = []
         for fold in folds:
             recs.extend(select_for_fold(
-                combos, fold, wf["select_metric"], wf["select_per"],
-                wf["select_top_k"], wf["min_is_trades"], thr))
+                combos, fold, wf.select_metric, wf.select_per,
+                wf.select_top_k, wf.min_is_trades, thr))
         n = sum(r["oos_trades"] for r in recs)
         if n == 0:
             print(f"{thr:>9.1f}{len(recs):>7}{0:>9}{'—':>10}{'—':>12}")
@@ -510,11 +474,12 @@ def collect_oos_trades(config, records):
 
     trades = []
     for task, recs in by_task.items():
-        df, _corr, _msg = backtest.calc_trade_results(config, False, *task)
+        df, _corr, _msg = backtest.calc_trade_results(
+            config, False, *task.as_backtest_args()
+        )
         if df is None or df.empty:
             continue
-        ref_s, tgt_s, sig, counter, excess, width, hold, start, sma = task
-        pair = f"{task[1]} ← {task[0]}"
+        pair = f"{task.target_name} ← {task.ref_name}"
         for r in recs:
             ts, te = r["test_start"], r["test_end"]
             # 選抜時と同じく、検証期間内で建てて期間内で決済した
@@ -536,10 +501,14 @@ def collect_oos_trades(config, records):
                     "selection_score": r["selection_score"],
                     "test_period": f"{ts}-{te}",
                     # 統合表用の戦略メタ＋学習成績（equity 出力には影響しない）
-                    "target": tgt_s, "ref": ref_s, "signal_type": sig,
-                    "counter_trade": counter, "use_excess_return": excess,
-                    "threshold_width": width, "hold_days": hold,
-                    "start_days": start, "sma_period": sma,
+                    "target": task.target_name, "ref": task.ref_name,
+                    "signal_type": task.signal_type,
+                    "counter_trade": task.counter_trade,
+                    "use_excess_return": task.use_excess_return,
+                    "threshold_width": task.threshold_width,
+                    "hold_days": task.hold_days,
+                    "start_days": task.start_days,
+                    "sma_period": task.sma_period,
                     "is_trades": r["is_trades"], "is_mean_pct": r["is_mean_pct"],
                     "is_t": r["is_t"], "is_years": r.get("is_years", ""),
                 })
@@ -556,7 +525,7 @@ def build_and_write_equity(config, wf, records, save_dir):
         print("\nエクイティ: 未知トレードが取得できませんでした。")
         return
 
-    trades, skipped = limit_open_positions(trades, wf["max_open_positions"])
+    trades, skipped = limit_open_positions(trades, wf.max_open_positions)
     if not trades:
         print("\nエクイティ: 最大建玉制限の適用後、未知トレードがありませんでした。")
         return
@@ -566,8 +535,8 @@ def build_and_write_equity(config, wf, records, save_dir):
     n = stats["n"]
     print("\n=== エクイティ（未知トレードを実現日で連結。等額・非複利＝1取引1単位を加算）===")
     print(f"未知トレード数       : {n:,}")
-    if wf["max_open_positions"] > 0:
-        print(f"最大同時建玉数       : {wf['max_open_positions']}")
+    if wf.max_open_positions > 0:
+        print(f"最大同時建玉数       : {wf.max_open_positions}")
         print(f"建玉上限による見送り : {len(skipped):,}")
     print(f"累積リターン（合計%） : {stats['final_pct']:+.2f}%")
     print(f"1取引あたり平均       : {stats['final_pct'] / n:+.4f}%")
@@ -612,7 +581,7 @@ def write_unified(curve, records, wf, save_dir):
             pass
         return format(v, fmt)
 
-    path = Path(save_dir) / f"walkforward_{wf['select_metric']}.csv"
+    path = Path(save_dir) / f"walkforward_{wf.select_metric}.csv"
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(UNIFIED_COLUMNS)
@@ -638,10 +607,13 @@ def write_unified(curve, records, wf, save_dir):
             record_key = (f"{r['test_start']}-{r['test_end']}", r["task"])
             if record_key in executed_keys:
                 continue
-            ref_s, tgt_s, sig, counter, excess, width, hold, start, sma = r["task"]
+            task = r["task"]
             w.writerow([
-                f"{r['test_start']}-{r['test_end']}", tgt_s, ref_s, sig, counter,
-                excess, width, hold, start, sma,
+                f"{r['test_start']}-{r['test_end']}",
+                task.target_name, task.ref_name, task.signal_type,
+                task.counter_trade, task.use_excess_return,
+                task.threshold_width, task.hold_days,
+                task.start_days, task.sma_period,
                 r["is_trades"], num(r["is_mean_pct"], ".9f"),
                 num(r["is_t"], ".9f"), r.get("is_years", ""),
                 "", "", "", "", "", "",
@@ -689,7 +661,7 @@ def write_outputs(records, folds, wf):
     print(f"未知期間の総取引数          : {tot_n:,}")
     print(f"未知期間の t値              : {oos_t:.3f}（独立仮定の近似）")
     print(f"未知期間の勝率              : {oos_win:.2f}%")
-    print(f"\n出力: walkforward_{wf['select_metric']}.csv（統合表1枚）")
+    print(f"\n出力: walkforward_{wf.select_metric}.csv（統合表1枚）")
 
 
 def run(
@@ -724,10 +696,10 @@ def run(
 
     config = backtest_config.BackTestConfig(config_data)
     wf = read_wf_params(config_data)
-    if wf["max_open_positions"] < 0:
+    if wf.max_open_positions < 0:
         raise ValueError("max_open_positions は 0 以上を指定してください。")
     if select_metric is not None:
-        wf["select_metric"] = select_metric
+        wf.select_metric = SelectionMetric(select_metric)
 
     # 前提が崩れるケースを先に知らせる
     if any(bool(x) for x in config.use_excess_return):
@@ -735,13 +707,13 @@ def run(
               "厳密な leak-free 評価には use_excess_return=[false] を推奨します。")
 
     print(f"ワーカー数: {MAX_WORKERS}")
-    print(f"walk-forward 設定: {wf['mode']} / 学習{wf['train_years']}年 → 検証{wf['test_years']}年 "
-          f"（{wf['step_years']}年ずつ前進） / 選抜={wf['select_metric']}・"
-          f"{wf['select_per']}ごと上位{wf['select_top_k']} / 最小IS取引={wf['min_is_trades']}"
-          + (f" / 品質ゲート min_is_t={wf['min_is_t']}" if wf['min_is_t'] > 0
+    print(f"walk-forward 設定: {wf.mode} / 学習{wf.train_years}年 → 検証{wf.test_years}年 "
+          f"（{wf.step_years}年ずつ前進） / 選抜={wf.select_metric}・"
+          f"{wf.select_per}ごと上位{wf.select_top_k} / 最小IS取引={wf.min_is_trades}"
+          + (f" / 品質ゲート min_is_t={wf.min_is_t}" if wf.min_is_t > 0
              else " / 品質ゲートなし")
-          + (f" / 最大建玉={wf['max_open_positions']}"
-             if wf["max_open_positions"] > 0 else " / 最大建玉=無制限"))
+          + (f" / 最大建玉={wf.max_open_positions}"
+             if wf.max_open_positions > 0 else " / 最大建玉=無制限"))
 
     tasks = build_tasks(config)
     print(f"組み合わせ数: {len(tasks):,}")
@@ -799,11 +771,16 @@ def run(
             all_years.add(exit_year)
     min_year, max_year = min(all_years), max(all_years)
     # live
-    train_start = max_year - wf["train_years"] + 1
-    live_fold = (train_start, max_year, max_year, max_year)
-    live_records = select_for_fold(combos, live_fold, wf["select_metric"],
-                                   wf["select_per"], wf["select_top_k"],
-                                   wf["min_is_trades"], wf["min_is_t"])
+    train_start = max_year - wf.train_years + 1
+    live_fold = WalkForwardFold(
+        train_start=train_start,
+        train_end=max_year,
+        test_start=max_year,
+        test_end=max_year,
+    )
+    live_records = select_for_fold(combos, live_fold, wf.select_metric,
+                                   wf.select_per, wf.select_top_k,
+                                   wf.min_is_trades, wf.min_is_t)
 
     # ranking_period が指定されていれば、walk-forward の対象年もその範囲に収める。
     # これで「まず 2001-2020 で前進検証 → 2021 以降は最終テストまで手つかずで温存」
@@ -819,11 +796,11 @@ def run(
         if min_year > max_year:
             print("ranking_period がデータ範囲と重なりません。設定を見直してください。")
             sys.exit(1)
-    folds = make_folds(min_year, max_year, wf["train_years"], wf["test_years"],
-                       wf["step_years"], wf["mode"])
+    folds = make_folds(min_year, max_year, wf.train_years, wf.test_years,
+                       wf.step_years, wf.mode)
     if not folds:
-        print(f"データ年範囲 {min_year}〜{max_year} では、学習{wf['train_years']}年＋"
-              f"検証{wf['test_years']}年のフォールドを作れません。設定を見直してください。")
+        print(f"データ年範囲 {min_year}〜{max_year} では、学習{wf.train_years}年＋"
+              f"検証{wf.test_years}年のフォールドを作れません。設定を見直してください。")
         sys.exit(1)
     print(f"データ年範囲: {min_year}〜{max_year} / フォールド数: {len(folds)}")
 
@@ -831,8 +808,8 @@ def run(
     all_records = []
     for fold in folds:
         all_records.extend(select_for_fold(
-            combos, fold, wf["select_metric"], wf["select_per"],
-            wf["select_top_k"], wf["min_is_trades"], wf["min_is_t"],
+            combos, fold, wf.select_metric, wf.select_per,
+            wf.select_top_k, wf.min_is_trades, wf.min_is_t,
         ))
 
     if not all_records:
@@ -841,7 +818,7 @@ def run(
         sys.exit(1)
 
     # 品質ゲートで「張らなかった枠」がどれだけあるかを可視化（銘柄別選抜のとき）
-    if wf["select_per"] == "target":
+    if wf.select_per == SelectionScope.TARGET:
         n_targets = len({combo["target"] for combo in combos})
         max_slots = len(folds) * n_targets
         placed = len(all_records)
@@ -849,15 +826,14 @@ def run(
         print(f"張った枠: {placed} / {max_slots}（見送り {skipped}）")
 
     write_outputs(all_records, folds, wf)
-    if wf["max_open_positions"] > 0:
+    if wf.max_open_positions > 0:
         print("※ 上のフォールド別/未知成績は戦略単体の集計で、最大建玉制限前です。")
         print("  最大建玉制限後の実運用相当成績は、下のエクイティ集計を参照してください。")
 
     # --- 閾値スキャン: min_is_t を変えたときの未知成績（再シミュレーション不要）---
-    if wf["max_open_positions"] > 0:
+    if wf.max_open_positions > 0:
         print("\n※ 閾値スキャンは最大建玉制限を適用しない参考値です。")
-    scan_thresholds(combos, folds, wf,
-                    thresholds=[0.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
+    scan_thresholds(combos, folds, wf, thresholds=MIN_IS_T_SCAN_THRESHOLDS)
 
     # --- エクイティカーブ＋最大DD（選抜された戦略だけ二次パスで再計算）---
     # 本体プロセスに指標キャッシュを仕込んでから、選抜済み task を再計算する。
@@ -871,8 +847,8 @@ def run(
     print(f" 実運用シグナル")
     print(f"  最新データ日（全Target中）: {str(latest_data_date)[:10]}")
     print("  建玉判定の基準日: Target銘柄ごとのデータ最終日")
-    print(f"  選抜: 直近 {train_start}–{max_year} 年で学習 / {wf['select_per']}ごと上位"
-          f"{wf['select_top_k']} / min_is_t={wf['min_is_t']}")
+    print(f"  選抜: 直近 {train_start}–{max_year} 年で学習 / {wf.select_per}ごと上位"
+          f"{wf.select_top_k} / min_is_t={wf.min_is_t}")
     print(f"  選抜された戦略: {len(live_records)} 本")
     print(f"{'='*72}")
 
@@ -883,13 +859,15 @@ def run(
     pending_rows = []
     for rec in live_records:
         task = rec["task"]
-        df, _corr, _msg = backtest.calc_trade_results(config, True, *task)
+        df, _corr, _msg = backtest.calc_trade_results(
+            config, True, *task.as_backtest_args()
+        )
         if df is None or df.empty:
             continue
 
-        target_name = task[1]
-        pair = f"{target_name} ← {task[0]}"
-        hold_days = task[6]
+        target_name = task.target_name
+        pair = f"{target_name} ← {task.ref_name}"
+        hold_days = task.hold_days
         last_date = target_last_dates[target_name]
         if "is_open" not in df.columns:
             df["is_open"] = False
@@ -928,7 +906,7 @@ def run(
             live_trade_candidates.append(candidate)
 
     accepted_live, skipped_live = limit_open_positions(
-        live_trade_candidates, wf["max_open_positions"]
+        live_trade_candidates, wf.max_open_positions
     )
 
     open_rows = list(pending_rows)
@@ -964,9 +942,9 @@ def run(
                 "profit_pct": trade["profit_pct"],
             })
 
-    if wf["max_open_positions"] > 0:
+    if wf.max_open_positions > 0:
         skipped_open = sum(1 for trade in skipped_live if trade.get("is_open"))
-        print(f"  最大建玉: {wf['max_open_positions']} / "
+        print(f"  最大建玉: {wf.max_open_positions} / "
               f"上限で見送りとなる現在OPEN候補: {skipped_open}")
 
     # --- レポート出力 ---

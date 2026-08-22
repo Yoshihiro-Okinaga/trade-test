@@ -5,8 +5,9 @@ import time
 import pandas as pd
 from itertools import combinations
 
-from backtest_config import BackTestConfig, SignalType
+from backtest_config import BackTestConfig, SignalType, TradeCodeType
 from market_data import MarketData
+from strategy_task import StrategyTask
 
 
 def calc_trade_results(config : BackTestConfig, is_emit_open_pos : bool, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period):
@@ -15,9 +16,9 @@ def calc_trade_results(config : BackTestConfig, is_emit_open_pos : bool, ref_nam
     if start_days < 1:
         raise ValueError("start_daysは1以上を指定してください。")
 
-    if config.trade_code_type == "same" and ref_name != target_name:
+    if config.trade_code_type == TradeCodeType.SAME and ref_name != target_name:
         return None, None, None
-    if config.trade_code_type == "not_same" and ref_name == target_name:
+    if config.trade_code_type == TradeCodeType.NOT_SAME and ref_name == target_name:
         return None, None, None
 
 
@@ -290,31 +291,31 @@ def init_worker(config, ref_cache, target_cache):
     _TARGET_CACHE = target_cache
 
 
-def run_one_shared(task):
+def run_one_shared(task: StrategyTask):
     """initializer で渡された config を使って run_one を呼ぶ。
     map に渡せるよう引数を task だけにしてある。"""
     return run_one(_WORKER_CONFIG, task)
 
 
-def run_one(config, task):
+def run_one(config, task: StrategyTask):
     """ワーカープロセスで実行される単位。集計まで済ませて軽い dict だけ返す。"""
     task_start = time.perf_counter() if config.output_task_time else None
 
-    ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period = task
-
     result_base = {}
-    df_results, corr, other_message = calc_trade_results(config, False, ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period)
+    df_results, corr, other_message = calc_trade_results(
+        config, False, *task.as_backtest_args()
+    )
     if corr is not None:
         result_base = {
-            "target": target_name,
-            "ref": ref_name,
-            "signal_type": signal_type,
-            "counter_trade": counter_trade,
-            "use_excess_return": use_excess_return,
-            "threshold_width": threshold_width,
-            "hold_days": hold_days,
-            "start_days": start_days,
-            "sma_period": sma_period,
+            "target": task.target_name,
+            "ref": task.ref_name,
+            "signal_type": task.signal_type,
+            "counter_trade": task.counter_trade,
+            "use_excess_return": task.use_excess_return,
+            "threshold_width": task.threshold_width,
+            "hold_days": task.hold_days,
+            "start_days": task.start_days,
+            "sma_period": task.sma_period,
             "correlation": corr,
             "other_message": other_message,
         }
@@ -413,3 +414,4 @@ def run_one(config, task):
         result["task_elapsed_seconds"] = time.perf_counter() - task_start
 
     return result
+
