@@ -51,6 +51,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 from walkforward_config import WalkForwardConfig
 from walkforward_fold import WalkForwardFold, make_folds
+from strategy_task import StrategyTask, build_strategy_tasks
 
 # pandas や backtest / market_data といった重い依存は、純粋なロジック関数を
 # 単体テストしやすいよう、モジュール読み込み時ではなく関数内で import する。
@@ -202,7 +203,8 @@ def select_for_fold(combos, fold: WalkForwardFold, metric, select_per, top_k,
                     min_is_trades, min_is_t=0.0):
     """1フォールドぶんの選抜と未知期間評価を行い、選ばれた戦略の記録を返す。
 
-    combos: [{"task": (...), "target": name, "periods": {(entry_year, exit_year):(n,s,ss,w)}}, ...]
+    combos: [{"task": StrategyTask, "target": name,
+             "periods": {(entry_year, exit_year):(n,s,ss,w)}}, ...]
     min_is_t: 品質ゲート。学習期間の t値がこの値未満の候補は選抜対象から外す。
               その結果、良い候補が無い銘柄はその期間「見送り」となり張らない。
               0.0（既定）ならゲート無効で従来どおり全銘柄に張る。t値は選抜時点で
@@ -237,7 +239,7 @@ def select_for_fold(combos, fold: WalkForwardFold, metric, select_per, top_k,
             continue
         scored.append((score, combo, n, s, ss))
 
-    # 決定的に並べる。スコア降順、同点は task タプルで安定させる
+    # 決定的に並べる。スコア降順、同点は StrategyTask のフィールド順で安定させる
     # （実行ごとに順位がブレて出力 diff が壊れるのを防ぐ）。
     scored.sort(key=lambda row: (-row[0], row[1]["task"]))
 
@@ -279,7 +281,7 @@ def select_for_fold(combos, fold: WalkForwardFold, metric, select_per, top_k,
 # シミュレーション本体の再利用（重い依存はここで import）
 # ============================================================================
 
-def collect_period_stats(task):
+def collect_period_stats(task: StrategyTask):
     """1つのパラメータ組み合わせについて全履歴を計算し、
     損益率を (entry_year, exit_year) ごとの十分統計量に畳んで返す。
     config と指標キャッシュは backtest.init_worker が仕込んだグローバルを使う。
@@ -287,7 +289,9 @@ def collect_period_stats(task):
     import backtest  # ワーカー側で解決
 
     config = backtest._WORKER_CONFIG
-    df, _corr, _msg = backtest.calc_trade_results(config, False, *task)
+    df, _corr, _msg = backtest.calc_trade_results(
+        config, False, *task.as_backtest_args()
+    )
     if df is None or df.empty:
         return None
 
@@ -304,26 +308,15 @@ def collect_period_stats(task):
         )
 
     return {
-        "task": tuple(task),
-        "target": task[1],
+        "task": task,
+        "target": task.target_name,
         "periods": period_stats,
     }
 
 
 def build_tasks(config):
-    """main.py と同じ組み合わせを作る（閾値は指標ごとの候補を展開する）。"""
-    return [
-        (ref_name, target_name, signal_type, counter_trade, use_excess_return,
-         threshold_width, hold_days, start_days, sma_period)
-        for ref_name, target_name in config.iter_ref_target()
-        for signal_type in config.signal_type_list
-        for counter_trade in config.counter_trade
-        for use_excess_return in config.use_excess_return
-        for threshold_width in config.widths_of(signal_type)
-        for hold_days in config.hold_days_list
-        for start_days in config.start_days_list
-        for sma_period in config.sma_period_list
-    ]
+    """main.py と同じ StrategyTask の組み合わせを作る。"""
+    return build_strategy_tasks(config)
 
 
 def read_wf_params(config_data):
@@ -470,11 +463,12 @@ def collect_oos_trades(config, records):
 
     trades = []
     for task, recs in by_task.items():
-        df, _corr, _msg = backtest.calc_trade_results(config, False, *task)
+        df, _corr, _msg = backtest.calc_trade_results(
+            config, False, *task.as_backtest_args()
+        )
         if df is None or df.empty:
             continue
-        ref_s, tgt_s, sig, counter, excess, width, hold, start, sma = task
-        pair = f"{task[1]} ← {task[0]}"
+        pair = f"{task.target_name} ← {task.ref_name}"
         for r in recs:
             ts, te = r["test_start"], r["test_end"]
             # 選抜時と同じく、検証期間内で建てて期間内で決済した
@@ -496,10 +490,14 @@ def collect_oos_trades(config, records):
                     "selection_score": r["selection_score"],
                     "test_period": f"{ts}-{te}",
                     # 統合表用の戦略メタ＋学習成績（equity 出力には影響しない）
-                    "target": tgt_s, "ref": ref_s, "signal_type": sig,
-                    "counter_trade": counter, "use_excess_return": excess,
-                    "threshold_width": width, "hold_days": hold,
-                    "start_days": start, "sma_period": sma,
+                    "target": task.target_name, "ref": task.ref_name,
+                    "signal_type": task.signal_type,
+                    "counter_trade": task.counter_trade,
+                    "use_excess_return": task.use_excess_return,
+                    "threshold_width": task.threshold_width,
+                    "hold_days": task.hold_days,
+                    "start_days": task.start_days,
+                    "sma_period": task.sma_period,
                     "is_trades": r["is_trades"], "is_mean_pct": r["is_mean_pct"],
                     "is_t": r["is_t"], "is_years": r.get("is_years", ""),
                 })
@@ -598,10 +596,13 @@ def write_unified(curve, records, wf, save_dir):
             record_key = (f"{r['test_start']}-{r['test_end']}", r["task"])
             if record_key in executed_keys:
                 continue
-            ref_s, tgt_s, sig, counter, excess, width, hold, start, sma = r["task"]
+            task = r["task"]
             w.writerow([
-                f"{r['test_start']}-{r['test_end']}", tgt_s, ref_s, sig, counter,
-                excess, width, hold, start, sma,
+                f"{r['test_start']}-{r['test_end']}",
+                task.target_name, task.ref_name, task.signal_type,
+                task.counter_trade, task.use_excess_return,
+                task.threshold_width, task.hold_days,
+                task.start_days, task.sma_period,
                 r["is_trades"], num(r["is_mean_pct"], ".9f"),
                 num(r["is_t"], ".9f"), r.get("is_years", ""),
                 "", "", "", "", "", "",
@@ -848,13 +849,15 @@ def run(
     pending_rows = []
     for rec in live_records:
         task = rec["task"]
-        df, _corr, _msg = backtest.calc_trade_results(config, True, *task)
+        df, _corr, _msg = backtest.calc_trade_results(
+            config, True, *task.as_backtest_args()
+        )
         if df is None or df.empty:
             continue
 
-        target_name = task[1]
-        pair = f"{target_name} ← {task[0]}"
-        hold_days = task[6]
+        target_name = task.target_name
+        pair = f"{target_name} ← {task.ref_name}"
+        hold_days = task.hold_days
         last_date = target_last_dates[target_name]
         if "is_open" not in df.columns:
             df["is_open"] = False

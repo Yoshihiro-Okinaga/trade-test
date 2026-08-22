@@ -9,6 +9,7 @@ from pathlib import Path
 import backtest
 import market_data
 import backtest_config
+from strategy_task import build_strategy_tasks
 
 MAX_WORKERS = min(32, os.cpu_count() or 1)  # 並列プロセス数
 ROUND_DIGITS = 9                            # 小数点以下の桁数（四捨五入）
@@ -79,18 +80,7 @@ def main(config_path=None, data_folder=None, save_dir=None):
     RANKING_OUTPUT_FILE = save_dir / "trade_ranking.csv"
     RANKING_OUTPUT_FILE_FULL = save_dir / "trade_ranking_full.csv"
 
-    tasks = [
-        (ref_name, target_name, signal_type, counter_trade, use_excess_return, threshold_width, hold_days, start_days, sma_period)
-        for ref_name, target_name in config.iter_ref_target()
-        for signal_type in config.signal_type_list
-        for counter_trade in config.counter_trade
-        for use_excess_return in config.use_excess_return
-        # 閾値は指標ごとにスケールが違うので、指標ごとの候補リストを展開する
-        for threshold_width in config.widths_of(signal_type)
-        for hold_days in config.hold_days_list
-        for start_days in config.start_days_list
-        for sma_period in config.sma_period_list
-    ]
+    tasks = build_strategy_tasks(config)
 
     ranking_results = []
     total_tasks = len(tasks)
@@ -172,3 +162,4 @@ def main(config_path=None, data_folder=None, save_dir=None):
 
 if __name__ == "__main__":
     main()
+
