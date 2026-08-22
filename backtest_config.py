@@ -1,10 +1,15 @@
-
 from typing import List, Optional
 from dataclasses import dataclass, field
 from enum import StrEnum
 
 
 # === 設定 ===
+class TradeCodeType(StrEnum):
+    SAME = "same"
+    NOT_SAME = "not_same"
+    ALL = "all"
+
+
 class SignalType(StrEnum):
     CHANGE = "change"
     SMA = "sma"
@@ -118,7 +123,17 @@ class BackTestConfig:
             self.target_list = [n for n in selected if n not in excluded]
             if not self.target_list:
                 raise ValueError("exclude_namesで全銘柄が除外されています。")
-        self.signal_type_list: List[str] = config_data.get("signal_type_list", [])
+        raw_signal_types = config_data.get("signal_type_list", [])
+        try:
+            self.signal_type_list: List[SignalType] = [
+                SignalType(value) for value in raw_signal_types
+            ]
+        except ValueError as exc:
+            allowed = ", ".join(item.value for item in SignalType)
+            raise ValueError(
+                "signal_type_list に未対応の指標があります。"
+                f"指定可能: {allowed}"
+            ) from exc
         self.hold_days_list: List[int] = config_data.get("hold_days_list", [])
         self.start_days_list: List[int] = config_data.get("start_days_list", [])
         self.sma_period_list: List[int] = config_data.get("sma_period_list", [])
@@ -128,7 +143,19 @@ class BackTestConfig:
         # 0.0 なら従来どおり影響なし。値を振って main.py / walkforward.py を回すと、
         # 「摩擦をどこまで乗せても期待値がプラスで残るか」を選抜込みで検証できる。
         self.extra_cost_pct: float = config_data.get("extra_cost_pct", 0.0)
-        self.trade_code_type: str = config_data.get("trade_code_type", "all")
+        raw_trade_code_type = config_data.get(
+            "trade_code_type", TradeCodeType.ALL
+        )
+        try:
+            self.trade_code_type: TradeCodeType = TradeCodeType(
+                raw_trade_code_type
+            )
+        except ValueError as exc:
+            allowed = ", ".join(item.value for item in TradeCodeType)
+            raise ValueError(
+                f"trade_code_type は次のいずれかを指定してください: {allowed}。"
+                f"指定値: {raw_trade_code_type!r}"
+            ) from exc
         self.min_trade_count: int = config_data.get("min_trade_count", 10)
         self.counter_trade: List[bool] = config_data.get("counter_trade", [False])
         self.use_process_pool: bool = config_data.get("use_process_pool", True)
@@ -214,7 +241,7 @@ class BackTestConfig:
                 return 0.0
         return 0.0
 
-    def widths_of(self, signal_type: str) -> list:
+    def widths_of(self, signal_type: SignalType) -> list:
         """指標に対応する閾値の候補を一覧で返す。
         config に数値を書けば1件、リストを書けばその全件を試せる。
         例: bb = [1.0, 1.5, 2.0] と書くと3通りを別々のタスクとして回す。"""
@@ -223,8 +250,6 @@ class BackTestConfig:
             return list(value)
         return [value]
 
-    def center_of(self, signal_type: str) -> float:
+    def center_of(self, signal_type: SignalType) -> float:
         """指標に対応する中心値を返す。未設定なら 0。"""
         return self.threshold_center.get(signal_type, 0.0)
-
-

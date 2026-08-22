@@ -3,6 +3,7 @@ import datetime
 
 import main
 import walkforward
+from walkforward_config import SelectionMetric
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -16,12 +17,12 @@ TEST_DATA_FOLDER = TEST_RESULT_BASE_DIR / "stock-data" / "Manual"
 # live_signals.csv は最後に実行した指標で上書きされる。
 # 現在の config.toml と同じ t_value を最後にして、通常実行時の結果と揃える。
 WALKFORWARD_METRICS = [
-    "lower_confidence_bound",
-    "year_t_value",
-    "worst_year_pct",
-    "positive_year_ratio",
-    "half_split_min",
-    "t_value",
+    SelectionMetric.LOWER_CONFIDENCE_BOUND,
+    SelectionMetric.YEAR_T_VALUE,
+    SelectionMetric.WORST_YEAR_PCT,
+    SelectionMetric.POSITIVE_YEAR_RATIO,
+    SelectionMetric.HALF_SPLIT_MIN,
+    SelectionMetric.T_VALUE,
 ]
 
 

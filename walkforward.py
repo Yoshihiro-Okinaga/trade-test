@@ -49,7 +49,11 @@ import datetime
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 
-from walkforward_config import WalkForwardConfig
+from walkforward_config import (
+    SelectionMetric,
+    SelectionScope,
+    WalkForwardConfig,
+)
 from walkforward_fold import WalkForwardFold, make_folds
 from strategy_task import StrategyTask, build_strategy_tasks
 
@@ -57,6 +61,12 @@ from strategy_task import StrategyTask, build_strategy_tasks
 # 単体テストしやすいよう、モジュール読み込み時ではなく関数内で import する。
 
 MAX_WORKERS = min(32, os.cpu_count() or 1)
+MIN_IS_T_SCAN_THRESHOLDS = (0.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
+YEAR_BASED_SELECTION_METRICS = frozenset({
+    SelectionMetric.WORST_YEAR_PCT,
+    SelectionMetric.POSITIVE_YEAR_RATIO,
+    SelectionMetric.HALF_SPLIT_MIN,
+})
 
 
 def default_save_dir():
@@ -143,7 +153,7 @@ def year_t_value(period_stats, lo, hi):
     return (mean / std * math.sqrt(n_years)) if std > 0 else float("nan")
 
 
-def score_of(metric, n, s, ss, period_stats=None, lo=None, hi=None):
+def score_of(metric: SelectionMetric, n, s, ss, period_stats=None, lo=None, hi=None):
     """選抜スコアを返す。
 
     metric:
@@ -161,31 +171,31 @@ def score_of(metric, n, s, ss, period_stats=None, lo=None, hi=None):
     多数の候補から最大を選ぶことで生じる選抜バイアスへの対抗策として用意した。
     """
     mean, std, t = mean_std_t(n, s, ss)
-    if metric == "t_value":
+    if metric == SelectionMetric.T_VALUE:
         return t
-    if metric == "year_t_value":
+    if metric == SelectionMetric.YEAR_T_VALUE:
         if period_stats is None or lo is None or hi is None:
             return float("nan")
         return year_t_value(period_stats, lo, hi)
-    if metric == "lower_confidence_bound":
+    if metric == SelectionMetric.LOWER_CONFIDENCE_BOUND:
         if std <= 0 or n <= 1:
             return float("nan")
         return mean - std / math.sqrt(n)
-    if metric == "average_pct":
+    if metric == SelectionMetric.AVERAGE_PCT:
         return mean
-    if metric == "total_pct":
+    if metric == SelectionMetric.TOTAL_PCT:
         return float(s)
-    if metric in ("worst_year_pct", "positive_year_ratio", "half_split_min"):
+    if metric in YEAR_BASED_SELECTION_METRICS:
         if period_stats is None or lo is None or hi is None:
             return float("nan")
         year_stats = period_year_stats(period_stats, lo, hi)
         year_means = {y: su / c for y, (c, su, _sq, _wi) in year_stats.items() if c > 0}
         if not year_means:
             return float("nan")
-        if metric == "worst_year_pct":
+        if metric == SelectionMetric.WORST_YEAR_PCT:
             # どの年も食えるかを要求する。1年のまぐれ当たりで押し上がった候補を排除。
             return min(year_means.values())
-        if metric == "positive_year_ratio":
+        if metric == SelectionMetric.POSITIVE_YEAR_RATIO:
             # 陽性年比率だけでは同率が多発するので、平均と掛けて大きさも反映する。
             ratio = sum(1 for v in year_means.values() if v > 0) / len(year_means)
             return ratio * mean
@@ -199,7 +209,8 @@ def score_of(metric, n, s, ss, period_stats=None, lo=None, hi=None):
     raise ValueError(f"未知の select_metric: {metric!r}")
 
 
-def select_for_fold(combos, fold: WalkForwardFold, metric, select_per, top_k,
+def select_for_fold(combos, fold: WalkForwardFold, metric: SelectionMetric,
+                    select_per: SelectionScope, top_k,
                     min_is_trades, min_is_t=0.0):
     """1フォールドぶんの選抜と未知期間評価を行い、選ばれた戦略の記録を返す。
 
@@ -243,9 +254,9 @@ def select_for_fold(combos, fold: WalkForwardFold, metric, select_per, top_k,
     # （実行ごとに順位がブレて出力 diff が壊れるのを防ぐ）。
     scored.sort(key=lambda row: (-row[0], row[1]["task"]))
 
-    if select_per == "global":
+    if select_per == SelectionScope.GLOBAL:
         selected = scored[:top_k]
-    elif select_per == "target":
+    elif select_per == SelectionScope.TARGET:
         per_target = {}
         selected = []
         for row in scored:
@@ -688,7 +699,7 @@ def run(
     if wf.max_open_positions < 0:
         raise ValueError("max_open_positions は 0 以上を指定してください。")
     if select_metric is not None:
-        wf.select_metric = select_metric
+        wf.select_metric = SelectionMetric(select_metric)
 
     # 前提が崩れるケースを先に知らせる
     if any(bool(x) for x in config.use_excess_return):
@@ -807,7 +818,7 @@ def run(
         sys.exit(1)
 
     # 品質ゲートで「張らなかった枠」がどれだけあるかを可視化（銘柄別選抜のとき）
-    if wf.select_per == "target":
+    if wf.select_per == SelectionScope.TARGET:
         n_targets = len({combo["target"] for combo in combos})
         max_slots = len(folds) * n_targets
         placed = len(all_records)
@@ -822,8 +833,7 @@ def run(
     # --- 閾値スキャン: min_is_t を変えたときの未知成績（再シミュレーション不要）---
     if wf.max_open_positions > 0:
         print("\n※ 閾値スキャンは最大建玉制限を適用しない参考値です。")
-    scan_thresholds(combos, folds, wf,
-                    thresholds=[0.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
+    scan_thresholds(combos, folds, wf, thresholds=MIN_IS_T_SCAN_THRESHOLDS)
 
     # --- エクイティカーブ＋最大DD（選抜された戦略だけ二次パスで再計算）---
     # 本体プロセスに指標キャッシュを仕込んでから、選抜済み task を再計算する。

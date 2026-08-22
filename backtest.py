@@ -5,7 +5,7 @@ import time
 import pandas as pd
 from itertools import combinations
 
-from backtest_config import BackTestConfig, SignalType
+from backtest_config import BackTestConfig, SignalType, TradeCodeType
 from market_data import MarketData
 from strategy_task import StrategyTask
 
@@ -16,9 +16,9 @@ def calc_trade_results(config : BackTestConfig, is_emit_open_pos : bool, ref_nam
     if start_days < 1:
         raise ValueError("start_daysは1以上を指定してください。")
 
-    if config.trade_code_type == "same" and ref_name != target_name:
+    if config.trade_code_type == TradeCodeType.SAME and ref_name != target_name:
         return None, None, None
-    if config.trade_code_type == "not_same" and ref_name == target_name:
+    if config.trade_code_type == TradeCodeType.NOT_SAME and ref_name == target_name:
         return None, None, None
 
 

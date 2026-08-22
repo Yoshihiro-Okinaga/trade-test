@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from walkforward_config import WalkForwardMode
+
 
 @dataclass(frozen=True)
 class WalkForwardFold:
@@ -15,7 +17,7 @@ def make_folds(
     train_years: int,
     test_years: int,
     step_years: int,
-    mode: str,
+    mode: WalkForwardMode,
 ) -> list[WalkForwardFold]:
     """年境界で Walk-forward のフォールドを作る。
 
@@ -37,9 +39,9 @@ def make_folds(
         test_end = test_start + test_years - 1
         train_end = test_start - 1
 
-        if mode == "anchored":
+        if mode == WalkForwardMode.ANCHORED:
             train_start = min_year
-        elif mode == "rolling":
+        elif mode == WalkForwardMode.ROLLING:
             train_start = test_start - train_years
         else:
             raise ValueError(

@@ -32,12 +32,16 @@ exclude_names = [
 # 総当たりの代わりに、この (target ← ref) ペアだけを回す。
 # 空/未指定なら従来どおり symbol_groups × symbol_names の総当たり。
 # 2001～2015で作ったデータ
-symbol_pairs_use = true
+symbol_pairs_use = false
 symbol_pairs = [
     # Gemini, Clause, ChatGPT の共通候補。全ての指標で強い。
     { target = "GBP_USD",       ref = "EUR_GBP" },
     { target = "AUD_USD",       ref = "EUR_GBP" },
-    { target = "OIL_USD",       ref = "COPPER_USD" },
+    #{ target = "OIL_USD",       ref = "COPPER_USD" },
+    # 2つでの共通候補
+    { target = "EUR_JPY",       ref = "AUD_NZD" },
+    #{ target = "OIL_USD",       ref = "NZD_USD" },
+    #{ target = "OIL_USD",       ref = "GOLD_USD" },
 ]
 symbol_pairs_all = [
     # =========================================================
@@ -319,15 +323,15 @@ SILVER_USD = { cost = 0.1, group = "commodity" }
 
 [walkforward]
 train_years = 8            # 学習(選抜)期間の年数
-test_years = 2             # 検証(未知)期間の年数
-step_years = 2             # 前進幅。test_yearsと同じにすると未知期間が重ならない
+test_years = 1             # 検証(未知)期間の年数
+step_years = 1             # 前進幅。test_yearsと同じにすると未知期間が重ならない
 mode = "rolling"          # "anchored"(開始固定で拡大) / "rolling"(固定長スライド)
 # 選抜指標:
 #   成績の高さで選ぶ  : "t_value" / "average_pct" / "total_pct"
 #   ばらつきを割り引く: "lower_confidence_bound"(平均-k×標準誤差)
 #   時間的な一貫性重視: "year_t_value" / "worst_year_pct"(最悪年) /
 #                       "positive_year_ratio"(陽性年比率×平均) / "half_split_min"(前後半の低い方)
-select_metric = "t_value"
+select_metric = "worst_year_pct"
 select_per = "target"      # "target": Target銘柄ごと / "global": 全戦略まとめて
 select_top_k = 1           # "target"なら各Targetから上位N戦略、"global"なら全候補から上位N戦略を採用
 min_is_trades = 30         # 選抜に必要な学習期間の最小取引数
