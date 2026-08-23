@@ -1,7 +1,7 @@
 from pathlib import Path
 import datetime
 
-import main
+import strategy_screening
 import walkforward
 from walkforward_config import SelectionMetric
 
@@ -48,7 +48,7 @@ def run_regression_test():
     validate_test_environment()
 
     print("=== 回帰テスト: trade ranking ===")
-    main.main(
+    strategy_screening.main(
         config_path=TEST_CONFIG_PATH,
         data_folder=TEST_DATA_FOLDER,
         save_dir=TEST_RESULT_DIR,

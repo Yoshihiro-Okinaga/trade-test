@@ -27,12 +27,13 @@ symbol_names = [
 
 # ref には使うが target からは外す銘柄（コストが高い、取引困難など）。
 exclude_names = [
+    "CBOE_Volatility_Index",
 ]
 
 # 総当たりの代わりに、この (target ← ref) ペアだけを回す。
 # 空/未指定なら従来どおり symbol_groups × symbol_names の総当たり。
 # 2001～2015で作ったデータ
-symbol_pairs_use = false
+symbol_pairs_use = true
 symbol_pairs = [
     # Gemini, Clause, ChatGPT の共通候補。全ての指標で強い。
     { target = "GBP_USD",       ref = "EUR_GBP" },
@@ -42,7 +43,13 @@ symbol_pairs = [
     { target = "EUR_JPY",       ref = "AUD_NZD" },
     #{ target = "OIL_USD",       ref = "NZD_USD" },
     #{ target = "OIL_USD",       ref = "GOLD_USD" },
+    # CBOEを使う
+    { target = "NQ100_Futures",      ref = "CBOE_Volatility_Index" },
+    { target = "UK100_Futures",      ref = "CBOE_Volatility_Index" },
+    { target = "US30_Futures",       ref = "CBOE_Volatility_Index" },
+    { target = "USSPX500_Futures",   ref = "CBOE_Volatility_Index" },
 ]
+
 symbol_pairs_all = [
     # =========================================================
     # Gemini
@@ -212,7 +219,7 @@ use_excess_return = [
 period_years = [2001, 2006, 2011, 2016, 2021]
 
 # 期間の設定
-ranking_period = [2008, 2020]
+ranking_period = [2001, 2015]
 
 # エクストラコスト
 #extra_cost_pct = 0.1
@@ -295,7 +302,7 @@ TRY_JPY = { cost = 0.014, swap = 0.07587, group = "fx" }
 USD_CAD = { cost = 0.0016, swap = 0.00985, group = "fx" }
 USD_CHF = { cost = 0.00016, swap = 0.00914, group = "fx" }
 ZAR_JPY = { cost = 0.009, swap = 0.01338, group = "fx" }
-#CBOE_Volatility_Index = { cost = 0.09, group = "index" }
+CBOE_Volatility_Index = { cost = 0.09, group = "index" }
 #DAX_Futures = { cost = 3.0, group = "index" }
 #JAPAN255_Futures = { cost = 10.0, group = "index" }
 NQ100_Futures = { cost = 0.5, group = "index" }
