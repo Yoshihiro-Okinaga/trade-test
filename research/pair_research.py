@@ -77,14 +77,11 @@ def load_price_data(
 
 
 def research_pairs(
-    symbol_names: list[str],
+    pairs: list[tuple[str, str]],
     price_data: dict[str, pd.DataFrame],
     config: PairResearchConfig,
 ) -> list[dict]:
-    """全ペアを調べ、CSVに書けるdictのリストを返す。"""
-    pairs = list(
-        combinations(symbol_names, 2)
-    )
+    """指定されたペアを調べ、CSVに書けるdictのリストを返す。"""
     rows = []
 
     for index, (
@@ -107,6 +104,12 @@ def research_pairs(
                 price_data[symbol_b],
                 start_year=config.start_year,
                 end_year=config.end_year,
+                hedge_fit_start_year=(
+                    config.hedge_fit_start_year
+                ),
+                hedge_fit_end_year=(
+                    config.hedge_fit_end_year
+                ),
                 min_observations=(
                     config.min_observations
                 ),
@@ -256,6 +259,15 @@ def print_summary(
         "両方向cointegration p<=0.05: "
         f"{len(strict):,}"
     )
+    if config.uses_fixed_hedge:
+        print(
+            "※ ADF / half-life / edge は過去期間で固定した "
+            "alpha / beta のspreadを評価。"
+        )
+        print(
+            "※ cointegration p は評価期間そのものの診断値で、"
+            "Engle-Granger内部では回帰を再推定します。"
+        )
 
     if not strict.empty:
         print(
@@ -434,26 +446,43 @@ def run(
             config_data
         )
     )
+    pairs = (
+        list(research_config.pairs)
+        if research_config.pairs
+        else list(combinations(symbol_names, 2))
+    )
 
     print(
         f"研究対象銘柄数: "
         f"{len(symbol_names)}"
     )
-    pair_count = (
-        len(symbol_names)
-        * (len(symbol_names) - 1)
-        // 2
-    )
-    print(
-        f"組み合わせ数  : {pair_count:,}"
-    )
+    if research_config.pairs:
+        print(
+            f"固定ペア数      : {len(pairs):,}"
+        )
+    else:
+        print(
+            f"組み合わせ数    : {len(pairs):,}"
+        )
+
+    if research_config.uses_fixed_hedge:
+        print(
+            "hedge係数推定期間: "
+            f"{research_config.hedge_fit_start_year}〜"
+            f"{research_config.hedge_fit_end_year} "
+            "(alpha / beta 固定)"
+        )
+    else:
+        print(
+            "hedge係数          : 評価期間内OLS"
+        )
 
     price_data = load_price_data(
         symbol_names,
         data_folder,
     )
     rows = research_pairs(
-        symbol_names,
+        pairs,
         price_data,
         research_config,
     )

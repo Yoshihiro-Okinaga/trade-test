@@ -7,14 +7,17 @@ class PairResearchConfig:
 
     [pair_research] が無い場合は、既存 config.toml の symbol_groups /
     symbol_names / exclude_names / ranking_period を再利用する。
-    symbol_pairs は意図的に使わない。既存の推奨ペアに探索対象を限定しないため。
+    symbol_pairs は意図的に使わない。固定ペア検証では [pair_research].pairs を使う。
     """
 
     start_year: int | None
     end_year: int | None
+    hedge_fit_start_year: int | None
+    hedge_fit_end_year: int | None
     symbol_groups: tuple[str, ...]
     symbol_names: tuple[str, ...]
     exclude_names: tuple[str, ...]
+    pairs: tuple[tuple[str, str], ...]
 
     min_observations: int
     rolling_window: int
@@ -40,7 +43,17 @@ class PairResearchConfig:
         if period is None:
             period = config_data.get("ranking_period", [])
 
-        start_year, end_year = cls._parse_period(period)
+        start_year, end_year = cls._parse_period(
+            period,
+            "pair_research.period / ranking_period",
+        )
+        (
+            hedge_fit_start_year,
+            hedge_fit_end_year,
+        ) = cls._parse_period(
+            section.get("hedge_fit_period", []),
+            "pair_research.hedge_fit_period",
+        )
 
         symbol_groups = tuple(
             section.get(
@@ -60,13 +73,19 @@ class PairResearchConfig:
                 config_data.get("exclude_names", []),
             )
         )
+        pairs = cls._parse_pairs(
+            section.get("pairs", [])
+        )
 
         config = cls(
             start_year=start_year,
             end_year=end_year,
+            hedge_fit_start_year=hedge_fit_start_year,
+            hedge_fit_end_year=hedge_fit_end_year,
             symbol_groups=symbol_groups,
             symbol_names=symbol_names,
             exclude_names=exclude_names,
+            pairs=pairs,
             min_observations=int(
                 section.get("min_observations", 500)
             ),
@@ -137,14 +156,54 @@ class PairResearchConfig:
         return config
 
     @staticmethod
+    def _parse_pairs(
+        pairs,
+    ) -> tuple[tuple[str, str], ...]:
+        if not pairs:
+            return ()
+
+        parsed = []
+        seen = set()
+
+        for index, pair in enumerate(pairs, start=1):
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                raise ValueError(
+                    "pair_research.pairs の各要素は "
+                    "[銘柄A, 銘柄B] の2要素で指定してください。"
+                    f" index={index}"
+                )
+
+            symbol_a = str(pair[0])
+            symbol_b = str(pair[1])
+            if symbol_a == symbol_b:
+                raise ValueError(
+                    "pair_research.pairs に同一銘柄のペアがあります: "
+                    f"{symbol_a}"
+                )
+
+            pair_key = frozenset((symbol_a, symbol_b))
+            if pair_key in seen:
+                raise ValueError(
+                    "pair_research.pairs に重複ペアがあります: "
+                    f"{symbol_a} / {symbol_b}"
+                )
+
+            seen.add(pair_key)
+            parsed.append((symbol_a, symbol_b))
+
+        return tuple(parsed)
+
+
+    @staticmethod
     def _parse_period(
         period,
+        field_name: str,
     ) -> tuple[int | None, int | None]:
         if not period:
             return None, None
         if len(period) != 2:
             raise ValueError(
-                "pair_research.period / ranking_period は "
+                f"{field_name} は "
                 "[開始年, 終了年] の2要素で指定してください。"
             )
 
@@ -152,11 +211,29 @@ class PairResearchConfig:
         end_year = int(period[1])
         if start_year > end_year:
             raise ValueError(
-                "研究期間は 開始年 <= 終了年 で指定してください。"
+                f"{field_name} は "
+                "開始年 <= 終了年 で指定してください。"
             )
         return start_year, end_year
 
+    @property
+    def uses_fixed_hedge(self) -> bool:
+        return self.hedge_fit_start_year is not None
+
     def _validate(self) -> None:
+        if self.uses_fixed_hedge:
+            if self.start_year is None or self.end_year is None:
+                raise ValueError(
+                    "hedge_fit_period を使う場合は "
+                    "pair_research.period も指定してください。"
+                )
+            if self.hedge_fit_end_year >= self.start_year:
+                raise ValueError(
+                    "hedge_fit_period は評価期間より前にしてください。"
+                    f" fit_end={self.hedge_fit_end_year}, "
+                    f"period_start={self.start_year}"
+                )
+
         if self.min_observations < 30:
             raise ValueError(
                 "min_observations は30以上を指定してください。"
@@ -222,12 +299,29 @@ class PairResearchConfig:
         self,
         config_data: dict,
     ) -> list[str]:
-        """設定から研究対象銘柄を定義順で作る。"""
+        """設定から研究対象銘柄を定義順で作る。
+
+        pairs が指定されている場合は、その固定ペアに必要な銘柄だけを返す。
+        pairs が空なら従来通り symbol_groups / symbol_names から作る。
+        """
         symbols = config_data.get("symbols", {})
         if not isinstance(symbols, dict) or not symbols:
             raise ValueError(
                 "config.toml に [symbols] がありません。"
             )
+
+        if self.pairs:
+            pair_names = []
+            for symbol_a, symbol_b in self.pairs:
+                for name in (symbol_a, symbol_b):
+                    if name not in symbols:
+                        raise ValueError(
+                            "pair_research.pairs の未定義銘柄: "
+                            f"{name}"
+                        )
+                    if name not in pair_names:
+                        pair_names.append(name)
+            return pair_names
 
         defined_groups = {
             value.get("group")

@@ -48,6 +48,10 @@ class PairStatistics:
     rolling_corr_min: float
     rolling_corr_std: float
 
+    hedge_mode: str
+    hedge_fit_start_date: str
+    hedge_fit_end_date: str
+    hedge_fit_observation_count: int
     hedge_alpha: float
     hedge_ratio: float
     spread_std: float
@@ -86,6 +90,12 @@ class PairStatistics:
             "rolling_corr_mean": self.rolling_corr_mean,
             "rolling_corr_min": self.rolling_corr_min,
             "rolling_corr_std": self.rolling_corr_std,
+            "hedge_mode": self.hedge_mode,
+            "hedge_fit_start_date": self.hedge_fit_start_date,
+            "hedge_fit_end_date": self.hedge_fit_end_date,
+            "hedge_fit_observation_count": (
+                self.hedge_fit_observation_count
+            ),
             "hedge_alpha": self.hedge_alpha,
             "hedge_ratio": self.hedge_ratio,
             "hedge_ratio_distance_from_1": abs(
@@ -140,6 +150,8 @@ def analyze_pair(
     *,
     start_year: int | None,
     end_year: int | None,
+    hedge_fit_start_year: int | None,
+    hedge_fit_end_year: int | None,
     min_observations: int,
     rolling_window: int,
     z_lookback: int,
@@ -182,9 +194,24 @@ def analyze_pair(
         )
     )
 
-    hedge_alpha, hedge_ratio, spread = (
-        calculate_spread(log_a, log_b)
+    (
+        hedge_mode,
+        hedge_fit_aligned,
+        hedge_alpha,
+        hedge_ratio,
+        spread,
+    ) = build_spread_for_evaluation(
+        df_a,
+        df_b,
+        log_a,
+        log_b,
+        hedge_fit_start_year=hedge_fit_start_year,
+        hedge_fit_end_year=hedge_fit_end_year,
+        min_observations=min_observations,
     )
+    if hedge_fit_aligned is None:
+        hedge_fit_aligned = aligned
+
     spread_std = float(np.std(spread, ddof=1))
     if (
         not math.isfinite(spread_std)
@@ -248,6 +275,18 @@ def analyze_pair(
         rolling_corr_mean=rolling_stats["mean"],
         rolling_corr_min=rolling_stats["min"],
         rolling_corr_std=rolling_stats["std"],
+        hedge_mode=hedge_mode,
+        hedge_fit_start_date=(
+            hedge_fit_aligned["日付"]
+            .iloc[0]
+            .strftime("%Y-%m-%d")
+        ),
+        hedge_fit_end_date=(
+            hedge_fit_aligned["日付"]
+            .iloc[-1]
+            .strftime("%Y-%m-%d")
+        ),
+        hedge_fit_observation_count=len(hedge_fit_aligned),
         hedge_alpha=hedge_alpha,
         hedge_ratio=hedge_ratio,
         spread_std=spread_std,
@@ -363,6 +402,86 @@ def calculate_return_correlations(
     return return_correlation, rolling_stats
 
 
+def build_spread_for_evaluation(
+    df_a: pd.DataFrame,
+    df_b: pd.DataFrame,
+    log_a: np.ndarray,
+    log_b: np.ndarray,
+    *,
+    hedge_fit_start_year: int | None,
+    hedge_fit_end_year: int | None,
+    min_observations: int,
+) -> tuple[
+    str,
+    pd.DataFrame | None,
+    float,
+    float,
+    np.ndarray,
+]:
+    """評価用spreadを作る。
+
+    hedge_fit_period が無ければ従来通り評価期間内でOLSする。
+    指定されていれば、その過去期間だけで alpha / beta を推定し、
+    評価期間にはその係数を固定して適用する。
+    """
+    if hedge_fit_start_year is None:
+        alpha, beta, spread = calculate_spread(
+            log_a,
+            log_b,
+        )
+        return (
+            "in_period_ols",
+            None,
+            alpha,
+            beta,
+            spread,
+        )
+
+    fit_aligned = align_prices(
+        df_a,
+        df_b,
+        start_year=hedge_fit_start_year,
+        end_year=hedge_fit_end_year,
+    )
+    if len(fit_aligned) < min_observations:
+        raise ValueError(
+            "hedge推定期間の共通データが不足しています: "
+            f"{len(fit_aligned)} < {min_observations}"
+        )
+
+    fit_log_a = np.log(
+        fit_aligned["price_a"].to_numpy(dtype=float)
+    )
+    fit_log_b = np.log(
+        fit_aligned["price_b"].to_numpy(dtype=float)
+    )
+    if (
+        not np.isfinite(fit_log_a).all()
+        or not np.isfinite(fit_log_b).all()
+    ):
+        raise ValueError(
+            "hedge推定期間の対数価格で非有限値が発生しました。"
+        )
+
+    alpha, beta, _fit_spread = calculate_spread(
+        fit_log_a,
+        fit_log_b,
+    )
+    spread = calculate_spread_with_coefficients(
+        log_a,
+        log_b,
+        alpha,
+        beta,
+    )
+    return (
+        "fixed_from_past",
+        fit_aligned,
+        alpha,
+        beta,
+        spread,
+    )
+
+
 def calculate_spread(
     log_a: np.ndarray,
     log_b: np.ndarray,
@@ -383,6 +502,16 @@ def calculate_spread(
         alpha + beta * log_b
     )
     return alpha, beta, spread
+
+
+def calculate_spread_with_coefficients(
+    log_a: np.ndarray,
+    log_b: np.ndarray,
+    alpha: float,
+    beta: float,
+) -> np.ndarray:
+    """事前に決めた alpha / beta を固定してspreadを作る。"""
+    return log_a - (alpha + beta * log_b)
 
 
 def calculate_adf(
