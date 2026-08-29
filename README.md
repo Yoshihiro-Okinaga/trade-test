@@ -1,367 +1,407 @@
 # trade-test
 
-複数の市場データを使って、シグナル条件の総当たりバックテスト、ランキング、
-Walk-forward 検証、実運用候補シグナルの確認までを行う研究用プロジェクトです。
+最終更新: **2026-08-29**
 
-この README は 2026-08-22 時点のコード構成に合わせて書き直しています。
+このプロジェクトは、FX・CFD・株式などの価格データから、
 
-## このプロジェクトで重視すること
+- Ref銘柄のシグナルがTarget銘柄の将来値動きに効くか
+- 過去だけで選んだ戦略が未知期間でも残るか
+- 2銘柄の相対価格に短中期の平均回帰があるか
+- 戦略の強さが市場レジームによって変わるか
 
-最優先は **分かりやすさと追跡しやすさ** です。
+を段階的に研究するためのプロジェクトです。
 
-- UI、設定、売買計算、データ読み込み、Walk-forward の責務をできるだけ分ける。
-- グローバル状態は必要最小限にする。
-- 関数は一つの責務に寄せる。
-- 名前から役割が分かるようにする。
-- 変更時は計算結果を意図せず変えない。
-- 高度な抽象化より、手で読んで直せる単純さを優先する。
-- 既存ロジックを変更したら `regression_test.py` で差分を確認する。
+---
 
-## 現在の主要構成
+# 1. 引き継ぎに必要な3点
+
+新しいチャットでは、次の3点だけあれば研究を再開できます。
+
+1. **trade-test プロジェクト一式**
+2. **README.md（このファイル）**
+3. **RESEARCH_HYPOTHESES.md**
+
+新しいチャットでは、
+
+> README.md と RESEARCH_HYPOTHESES.md を読んで、現在地から研究を再開してください。
+
+と伝えればよいです。
+
+銘柄ごとの研究結果・有力仮説・弱くなった仮説は、
+このREADMEではなく `RESEARCH_HYPOTHESES.md` に集約します。
+
+---
+
+# 2. 現在の主要構成
 
 ```text
 trade-test/
+├── research/
+│   ├── pair_research.py
+│   ├── pair_research_config.py
+│   ├── pair_statistics.py
+│   └── regime_research.py
+├── stock-data/
 ├── backtest.py
 ├── backtest_config.py
 ├── config.toml
-├── strategy_screening.py
 ├── market_data.py
+├── regression_test.py
+├── strategy_screening.py
 ├── strategy_task.py
 ├── walkforward.py
 ├── walkforward_config.py
 ├── walkforward_fold.py
-├── regression_test.py
 ├── README.md
-├── ranking_analysis.md
-├── trade_ranking.csv
-└── stock-data/
+└── RESEARCH_HYPOTHESES.md
 ```
 
-### 各ファイルの責務
-
-| ファイル | 責務 |
-| --- | --- |
-| `strategy_screening.py` | 全戦略組み合わせを実行し、`t_value` 順のランキングを作る |
-| `backtest.py` | 1戦略の売買シミュレーションと成績集計 |
-| `backtest_config.py` | 通常バックテスト用設定の読み込み、`SignalType` / `TradeCodeType` |
-| `market_data.py` | 市場データ読み込みと指標キャッシュ構築 |
-| `strategy_task.py` | 1戦略を表す `StrategyTask` とタスク生成 |
-| `walkforward.py` | Walk-forward 選抜、未知期間評価、エクイティ、Live候補出力 |
-| `walkforward_config.py` | `WalkForwardConfig` と Walk-forward 用 Enum |
-| `walkforward_fold.py` | `WalkForwardFold` とフォールド生成 |
-| `regression_test.py` | 固定入力から主要CSVを再生成し、Git差分で回帰確認 |
-| `config.toml` | 銘柄、シグナル、期間、コスト、Walk-forward 設定の中心 |
-| `ranking_analysis.md` | ランキング結果の分析記録。過去分析もアーカイブする |
-
-## リファクタリング済みのデータ構造
-
-以前は辞書キーや長いタプルへの依存が多くありましたが、現在は主要な構造を
-名前付きの型にしています。
-
-- `WalkForwardConfig`: Walk-forward 設定
-- `WalkForwardFold`: 学習期間・検証期間
-- `StrategyTask`: 1つの戦略パラメータ
-
-また、明確な有限集合は `StrEnum` 化しています。
-
-- `SignalType`
-- `TradeCodeType`
-- `WalkForwardMode`
-- `SelectionMetric`
-- `SelectionScope`
-
-`StrategyTask` は `frozen=True, order=True` で、旧タプルと同じく辞書キー・比較・
-ソートに使える性質を維持しています。
-
-## 通常ランキング
-
-### 実行
-
-```bash
-python strategy_screening.py
-```
-
-基本の流れは次の通りです。
+役割:
 
 ```text
-config.toml
+strategy_screening.py
+    予測型戦略の広い探索
+
+walkforward.py
+    過去だけで選抜 → 未知期間で検証
+
+research/pair_research.py
+    2銘柄の相対価格・平均回帰研究
+
+research/regime_research.py
+    既存予測戦略の市場環境依存を研究
+```
+
+研究段階のロジックを、安定している本体へ急いで混ぜない方針です。
+
+---
+
+# 3. 研究の基本原則
+
+```text
+広く探索
+↓
+現象確認
+↓
+候補を絞る
+↓
+条件固定
+↓
+未知期間検証
+↓
+単純戦略化
+↓
+コスト耐性
+↓
+ポートフォリオ評価
+```
+
+守ること:
+
+- 未来情報を使わない
+- OOSを見たあとで条件を都合よく微調整しない
+- 1つの最高パラメータだけを信用しない
+- 複数Signal・複数期間での再現を重視する
+- 平均だけでなく中央値・勝率・取引数を見る
+- 高相関だけでPairを採用しない
+- ADF / cointegrationだけでPairを採用しない
+- 同じRefやTargetへの集中を独立戦略と数えない
+- 研究用edgeと実際の投資P&Lを混同しない
+
+---
+
+# 4. 通常の予測型戦略
+
+基本構造:
+
+```text
+Refのシグナル
+↓
+次営業日以降にTargetへエントリー
+↓
+一定期間後のTargetリターンを評価
+```
+
+現在の主要設定:
+
+```text
+signal_type:
+    change
+    sma
+    bb
+    di
+    stoch
+
+hold_days = 20
+start_days = 1
+sma_period = 10 / 15 / 50 / 100 / 200
+counter_trade = true / false
+no_overlap = true
+use_excess_return = false
+ranking_period = 2001–2015
+```
+
+`use_excess_return=true` は全期間平均ドリフトを使うため、
+厳密な未知期間評価では原則 `false` を使います。
+
+有力な銘柄関係は `RESEARCH_HYPOTHESES.md` を参照してください。
+
+---
+
+# 5. Walk-forward
+
+現在の主要設定:
+
+```text
+train_years = 8
+test_years = 1
+step_years = 1
+mode = rolling
+
+select_metric = worst_year_pct
+select_per = target
+select_top_k = 1
+min_is_trades = 30
+min_is_t = 2.0
+max_open_positions = 5
+```
+
+`worst_year_pct` は現在の設定であり、
+最良の選抜指標として確定したわけではありません。
+
+実装済み:
+
+- IS選抜
+- OOSトレード
+- 年別成績
+- threshold scan
+- equity / drawdown
+- live selection
+- OPEN / PENDING / recent CLOSED
+- `live_signals.csv`
+
+`max_open_positions` は現在、
+ポートフォリオ全体の同時建玉数だけを制限しています。
+
+Refクラスター、Targetクラスター、戦略間相関、リスク量を考慮した
+ポートフォリオ設計はまだ保留です。
+
+---
+
+# 6. Pair Research
+
+Pair Research は通常の予測型とは別研究です。
+
+```text
+2銘柄の価格関係
+↓
+相対価格が大きく乖離
+↓
+短中期で縮小するか
+```
+
+現在の検証構造:
+
+```text
+2001–2015
+Discovery
+↓
+alpha / beta 推定
+
+2016–2020
+2001–2015のalpha / betaを固定して検証
+
+↓
+売買ルール固定
+
+2021～
+最終 untouched holdout
+```
+
+**Pair Researchでは2021年以降をまだ見ないこと。**
+
+2016–2020は結果を候補選定にも使ったため、
+今後は development data と考えます。
+
+2021年以降は売買ルール固定後に一度だけ評価します。
+
+本命・保留・脱落候補は `RESEARCH_HYPOTHESES.md` を参照してください。
+
+---
+
+# 7. Regime Research
+
+既存予測戦略について、
+
+> Targetの市場環境によって戦略の強さが変わるか
+
+を研究します。
+
+固定定義:
+
+```text
+Volatility:
+    Targetの20日実現ボラ
+    vs
+    過去252日の20日ボラ中央値
+
+Direction:
+    Targetの前営業日終値
+    vs
+    前営業日の200日SMA
+```
+
+entry日の分類には前営業日までの情報しか使いません。
+
+4期間比較:
+
+```text
+2001–2005
+2006–2010
+2011–2015
+2016–2020
+```
+
+2001–2015の3区間は戦略選抜期間内なので独立OOSではありません。
+2016–2020が選抜期間外です。
+
+現在はレジームを本体の売買フィルタには組み込んでいません。
+
+### regime_research.py の注意
+
+`config.toml` は `periods = [...]` 形式です。
+
+`research/regime_research.py` は
+**複数 periods 対応版**を使うこと。
+
+正常な最新版では次を出力します。
+
+```text
+regime_selected_strategies.csv
+regime_trades.csv
+regime_summary.csv
+regime_comparison.csv
+```
+
+---
+
+# 8. 現在の研究段階
+
+```text
+Strategy Screening
+    候補探索済み
+
+Walk-forward
+    基盤完成
+
+Pair Research
+    本命2組まで絞り込み済み
     ↓
-BackTestConfig
+    単純売買ルール固定待ち
     ↓
-build_strategy_tasks()
+    2021+ 最終OOSは未実施
+
+Regime Research
+    20ペアまで拡張済み
     ↓
-market_data.build_caches()
+    4期間比較済み
     ↓
-各 StrategyTask を backtest.run_one() で計算
+    有望な固定レジーム仮説を抽出済み
     ↓
-t_value 降順でランキング
-    ↓
-trade_ranking.csv
+    本体統合は保留
 ```
 
-### ランキングの考え方
+---
 
-順位は `t_value` の降順です。
+# 9. 次にやること
 
-`t_value` は平均損益だけでなく、損益のばらつきと取引数も加味するため、
-少数の大当たりだけで平均が高い設定を上位にしにくくする目的があります。
-
-`ranking_period` が設定されている場合、次のランキング統計はその期間だけで計算します。
-
-- `trade_count`
-- `win_rate`
-- `total_profit`
-- `average_pct`
-- `std_pct`
-- `t_value`
-- `positive_year_ratio`
-- `worst_year_profit`
-
-一方、`period_years` から作る `average_pct_YYYY_YYYY` / `trade_count_YYYY_YYYY`
-の列は全履歴から作られます。ランキングに使った期間と、その前後の期間を比較するためです。
-
-### 出力
-
-通常は次を出力します。
+現在の最優先作業はPair Researchです。
 
 ```text
-trade_ranking.csv
+中部電力 / 関西電力
+中部電力 / 九州電力
 ```
 
-ランキング件数が 10,000 行を超える場合、`trade_ranking.csv` は上位10,000件、
-全件は次に保存します。
+について、
+
+**2021年以降を見ないまま、単純な売買ルールを固定する。**
+
+決める項目:
+
+- hedge ratioの更新方法
+- z-score lookback
+- entry threshold
+- exit条件
+- 最大保有期間
+- 2ペア同時発生時の扱い
+- 売買コスト
+- 空売り可否・貸株コスト
+
+その後、2021年以降を最終ホールドアウトとして一度だけ評価します。
+
+---
+
+# 10. 今やらないこと
+
+- Pairの2021年以降を見る
+- 2016–2020を見てPair閾値を細かく調整する
+- 2.01σ、2.07σのような一点最適化
+- Regimeの20 / 252 / 200を結果に合わせて変更する
+- Regimeを今すぐStrategy Screeningの探索パラメータにする
+- 弱い戦略をRegime miningで無理に救済する
+- `max_open_positions` を大改造する
+- コスト未反映の研究値を実収益とみなす
+
+---
+
+# 11. 実行コマンド
+
+Windows / Python 3.14:
+
+```bat
+py -3.14 strategy_screening.py
+py -3.14 walkforward.py
+py -3.14 walkforward.py live
+py -3.14 research\\pair_research.py --config config.toml
+py -3.14 research\\regime_research.py --config config.toml
+```
+
+---
+
+# 12. コード変更時の方針
+
+このプロジェクトでは **分かりやすさを最優先**します。
+
+- 不要な変更をしない
+- 既存コメントを理由なく削除しない
+- 関数の責務を明確にする
+- UI / ロジック / I/O / 状態を必要に応じて分離する
+- データの流れと副作用を追いやすくする
+- グローバル状態は必要最小限
+- worker cache用グローバルは安易に消さない
+- 変更ファイルをすべて列挙する
+- 既存ロジックを変更した場合は回帰テストする
+- 早すぎる抽象化を避ける
+
+---
+
+# 13. 新しいチャットでの再開方法
+
+プロジェクト一式と、
 
 ```text
-trade_ranking_full.csv
+README.md
+RESEARCH_HYPOTHESES.md
 ```
 
-## シグナル
+を渡して、
 
-現在コードで扱うシグナル種別は `SignalType` で定義しています。
+> README.md と RESEARCH_HYPOTHESES.md を読んで、現在地から研究を再開してください。
 
-```text
-change
-sma
-bb
-macd
-rsi
-di
-stoch
-streak
-```
+と伝える。
 
-実際にどれを検証するかは `config.toml` の `signal_type_list` で指定します。
+最優先の続きは、
 
-指標ごとにスケールが異なるため、売買閾値は `[threshold_width]` で個別設定できます。
-`rsi` / `stoch` のように中心値を持つ指標は `[threshold_center]` も利用します。
-
-## StrategyTask
-
-1つの戦略組み合わせは次の項目を持ちます。
-
-```text
-ref_name
-target_name
-signal_type
-counter_trade
-use_excess_return
-threshold_width
-hold_days
-start_days
-sma_period
-```
-
-`strategy_screening.py` と `walkforward.py` は同じ `build_strategy_tasks()` を使うため、
-通常ランキングと Walk-forward でタスク生成条件がずれにくい構造になっています。
-
-## Walk-forward 検証
-
-### 実行
-
-```bash
-python walkforward.py
-```
-
-過去期間だけで戦略を選び、その直後の未知期間だけで成績を評価します。
-これを時間方向に繰り返すことで、全期間を見てから勝者を選ぶ過剰最適化を減らします。
-
-### Walk-forward の主要設定
-
-`[walkforward]` では次を設定します。
-
-- `train_years`: 学習・選抜期間
-- `test_years`: 未知期間
-- `step_years`: 前進幅
-- `mode`: `anchored` / `rolling`
-- `select_metric`: 選抜指標
-- `select_per`: `target` / `global`
-- `select_top_k`: 選抜本数
-- `min_is_trades`: 学習期間の最低取引数
-- `min_is_t`: 品質ゲート
-- `max_open_positions`: ポートフォリオ全体の最大同時建玉数。0は無制限
-
-### SelectionMetric
-
-現在の選抜指標は次です。
-
-| 値 | 意味 |
-| --- | --- |
-| `t_value` | 取引単位の t値 |
-| `year_t_value` | 年平均を1サンプルとした t値 |
-| `lower_confidence_bound` | 平均から標準誤差を割り引く |
-| `average_pct` | 平均損益率 |
-| `total_pct` | 損益率合計 |
-| `worst_year_pct` | 学習期間の最悪年を重視 |
-| `positive_year_ratio` | 陽性年比率と平均の合成 |
-| `half_split_min` | 学習期間の前半・後半の弱い方を評価 |
-
-### Walk-forward 出力
-
-```text
-walkforward_{select_metric}.csv
-live_signals.csv
-```
-
-`walkforward_*.csv` は未知期間のトレード、選抜時の学習成績、フォールド情報を
-一つの統合表として持ちます。
-
-`live_signals.csv` は直近学習期間で選ばれた戦略について、現在の候補を出力します。
-
-```text
-PENDING : シグナル確定済み、まだ未エントリー
-OPEN    : 現在保有中
-CLOSED  : 直近の決済済みトレード
-```
-
-## max_open_positions について
-
-`max_open_positions` は現在も使用しますが、**アルゴリズムの再設計は保留中**です。
-
-現状はポートフォリオ全体の同時建玉数を制限し、同日の候補では学習時点の
-`selection_score` が高いものを優先します。
-
-将来、次の問題を本格的に扱う段階で再検討します。
-
-- 同一銘柄への集中
-- 同一 Ref / Target への集中
-- 戦略間相関
-- 資金配分
-- リスク量ベースの建玉制限
-
-## 回帰テスト
-
-### 実行
-
-```bash
-python regression_test.py
-```
-
-固定入力から次を再生成します。
-
-- 通常ランキング
-- `lower_confidence_bound`
-- `year_t_value`
-- `worst_year_pct`
-- `positive_year_ratio`
-- `half_split_min`
-- `t_value`
-
-テストスクリプト自体は数値差分を判定しません。
-
-```text
-regression_test.py
-    ↓
-主要CSVを再生成
-    ↓
-git diff
-    ↓
-意図しない変更がないことを確認
-```
-
-リファクタリングではこの方法で各段階の結果が変わっていないことを確認しています。
-
-## 注意点
-
-### use_excess_return
-
-`use_excess_return=true` のドリフトは現在、全期間平均から計算されます。
-厳密な leak-free 評価を行う場合は注意が必要です。
-Walk-forward 側もこの条件を検出すると警告を表示します。
-
-### 売買コスト
-
-`config.toml` の `[symbols]` にある `cost` / `swap` を利用します。
-値が 0 または未設定の銘柄は、現実の摩擦を十分に反映していない可能性があります。
-結果を見るときは必ず確認してください。
-
-### ランキングだけで採用しない
-
-`trade_ranking.csv` は候補探索用です。
-高い `t_value` は将来の利益を保証しません。
-
-最終判断では少なくとも、
-
-1. 期間別成績
-2. 複数パラメータでの再現性
-3. 複数シグナルでの再現性
-4. Walk-forward
-5. コスト耐性
-6. 戦略同士の集中
-
-を確認します。
-
-## 現在の開発状況
-
-2026-08-22 時点で、主要な構造リファクタリングは一段落しています。
-
-完了済み:
-
-- `WalkForwardConfig` dataclass 化
-- `WalkForwardFold` dataclass 化
-- `StrategyTask` dataclass 化
-- タスク生成処理の共通化
-- 明確な有限集合の Enum 化
-- 各段階の回帰テスト
-
-今後は「コードを綺麗にすること」自体を目的にせず、新しい研究や機能追加で
-実際に邪魔になった箇所を必要な分だけ整理します。
-
-## 保留中の次期研究: 高相関ペアと平均回帰
-
-**重要: このテーマは未着手ではなく、意図的に後回しにしている次の研究テーマです。**
-
-再開するときは、まず既存バックテストへ直接組み込まず、研究専用プログラムを作ります。
-仮のファイル名は次です。
-
-```text
-pair_research.py
-```
-
-研究の順序:
-
-```text
-1. 高相関な銘柄ペアを探索
-2. 価格差・価格比・スプレッドを定義
-3. 乖離量を測る
-4. 乖離後に平均へ戻る確率を測る
-5. 回帰までの日数を測る
-6. 年代別に性質が安定しているか確認
-7. 現象が十分に強ければ単純な売買戦略へ昇格
-8. 既存 Walk-forward で検証
-```
-
-注意点は、**高相関だから平均回帰するとは限らない**ことです。
-最初から売買ルールを最適化せず、まず現象そのものが存在するかを検証します。
-
-この研究を再開するときのキーワードは、
-
-> 「高相関ペアの乖離・平均回帰研究を再開する」
+> **中部電力/関西電力と中部電力/九州電力について、2021年以降を見ずに単純なPair売買ルールを固定する。**
 
 です。
-
-## 関連資料
-
-- `ranking_analysis.md`: 通常ランキングの分析と過去候補の記録
-- `trade_ranking.csv`: 現在のランキング結果
-- `walkforward_*.csv`: 未知期間評価
-- `live_signals.csv`: 現在の候補シグナル

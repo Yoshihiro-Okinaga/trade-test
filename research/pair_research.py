@@ -8,8 +8,8 @@ import tomllib
 
 # このファイルをサブフォルダから直接実行しても、
 # プロジェクト直下の market_data.py を読めるようにする。
-PAIR_RESEARCH_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = PAIR_RESEARCH_DIR.parent
+RESEARCH_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = RESEARCH_DIR.parent
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 

@@ -370,3 +370,78 @@ min_is_trades = 30         # 選抜に必要な学習期間の最小取引数
 min_is_t = 2.0             # 学習期間のt値がこの値未満の銘柄は見送る。0で無効
 # ポートフォリオ全体で同時に保有できる最大建玉数。0なら無制限。
 max_open_positions = 5
+
+# 既存シグナル戦略のレジーム研究
+#
+# ranking_period だけで各 target/ref の最良戦略を1本固定し、
+# その後の period で市場環境別に成績を分解する。
+# この段階ではレジームを売買フィルタには使わない。
+[regime_research]
+# 戦略は ranking_period = [2001, 2015] で1本に固定したまま、
+# 同じ戦略・同じレジーム定義を5年ごとに比較する。
+# 2001～2015は選抜期間内の記述的確認、2016～2020はOOS。
+periods = [
+    [2001, 2005],
+    [2006, 2010],
+    [2011, 2015],
+    [2016, 2020],
+]
+
+# Target自身の過去価格だけでレジームを判定する。
+# entry日の判定には前営業日までの情報しか使わない。
+volatility_window = 20
+volatility_baseline_window = 252
+direction_sma_window = 200
+min_trades_per_regime = 5
+
+# レジーム研究では、個別の当たり外れだけでなく、
+# 同じテーマ内で同じレジーム特性が再現するかを確認する。
+#
+# { target = "...", ref = "..." } の向きに注意。
+pairs = [
+    # =========================================================
+    # EUR_GBP 系
+    # 「EUR_GBPを先行指標とする戦略は低ボラで強いか」を横断確認する。
+    # =========================================================
+    { target = "GBP_USD", ref = "EUR_GBP" },
+    { target = "AUD_USD", ref = "EUR_GBP" },
+    { target = "NZD_USD", ref = "EUR_GBP" },
+    { target = "AUD_JPY", ref = "EUR_GBP" },
+    { target = "EUR_USD", ref = "EUR_GBP" },
+    { target = "GOLD_USD", ref = "EUR_GBP" },
+
+    # =========================================================
+    # AUD_NZD 系
+    # 「AUD_NZDを先行指標とするクロス円は下降局面で強いか」を確認する。
+    # =========================================================
+    { target = "EUR_JPY", ref = "AUD_NZD" },
+    { target = "CAD_JPY", ref = "AUD_NZD" },
+    { target = "CHF_JPY", ref = "AUD_NZD" },
+    { target = "GBP_JPY", ref = "AUD_NZD" },
+
+    # =========================================================
+    # 原油 Target 系
+    # Refごとに高ボラ/低ボラの性質が共通するか、異なるかを確認する。
+    # =========================================================
+    { target = "OIL_USD", ref = "GOLD_USD" },
+    { target = "OIL_USD", ref = "COPPER_USD" },
+    { target = "OIL_USD", ref = "NZD_USD" },
+    { target = "OIL_USD", ref = "USD_CAD" },
+    { target = "OIL_USD", ref = "SILVER_USD" },
+
+    # =========================================================
+    # 異種アセット
+    # FX内部や原油クラスターとは別のレジーム特性を確認する。
+    # =========================================================
+    { target = "GBP_JPY", ref = "USSPX500_Futures" },
+    { target = "GBP_JPY", ref = "UK100_Futures" },
+    { target = "NQ100_Futures", ref = "USD_CHF" },
+
+    # =========================================================
+    # VIX 系
+    # ボラティリティ指標そのものをRefにする戦略。
+    # Target自身の高/低ボラ判定との関係を見るため、代表2本を追加する。
+    # =========================================================
+    { target = "NQ100_Futures", ref = "CBOE_Volatility_Index" },
+    { target = "USSPX500_Futures", ref = "CBOE_Volatility_Index" },
+]
