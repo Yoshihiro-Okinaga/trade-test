@@ -445,3 +445,103 @@ pairs = [
     { target = "NQ100_Futures", ref = "CBOE_Volatility_Index" },
     { target = "USSPX500_Futures", ref = "CBOE_Volatility_Index" },
 ]
+
+# Pair Researchで残った本命2組を、実際の売買に近い形で検証する。
+# 2021年以降は最終holdoutとして温存するため、ここでは2016～2020まで。
+[pair_strategy_research]
+# FINAL OOS。2021-2025の5年間だけを一度評価する。
+# 2026年は今回読まず、将来のforward期間として残す。
+period = [2021, 2025]
+hedge_fit_period = [2001, 2015]
+
+pairs = [
+    ["9502_中部電力", "9503_関西電力"],
+    ["9502_中部電力", "9508_九州電力"],
+]
+
+# Pair discoveryで使ってきた設定をそのまま固定する。
+z_lookback = 60
+entry_z = 2.0
+max_hold_days = 20
+
+# 当日終値でsignalを判定し、翌営業日終値で建てる。
+# zero crossも当日終値で確認後、翌営業日終値で決済する。
+entry_delay_days = 1
+
+# 2021+を見る前に事前固定するコスト条件。
+# baselineを主判定、stressを耐性確認に使う。
+primary_cost_scenario = "baseline"
+cost_scenarios = [
+    { name = "baseline", transaction_cost_bps_per_turnover = 10.0, short_borrow_bps_per_day = 0.5 },
+    { name = "stress", transaction_cost_bps_per_turnover = 20.0, short_borrow_bps_per_day = 1.0 },
+]
+
+# 本命2組は中部電力を共有するため、Pairごとに資金枠を固定する。
+# どちらかを過去成績で優先せず、50%ずつ独立したsleeveとして扱う。
+# 両方同時なら合計100%、片方だけなら残り50%は現金。
+# 最終OOSの主判定は、これまでと同じ価格リターン。
+# CSVに配当・調整後終値が無いため、配当は含めない。
+return_basis = "split_adjusted_close_price_only_no_dividends"
+
+portfolio_mode = "fixed_pair_sleeves"
+pair_allocations = [
+    { symbol_a = "9502_中部電力", symbol_b = "9503_関西電力", capital_fraction = 0.5 },
+    { symbol_a = "9502_中部電力", symbol_b = "9508_九州電力", capital_fraction = 0.5 },
+]
+
+# OIL_USD <- GOLD_USD × OIL down の固定Regime戦略研究。
+# 2021年以降を開ける前に、2001-2020だけで
+# 「元戦略」と「downだけ」を実トレード単位で再確認する。
+[regime_strategy_research]
+periods = [
+    [2001, 2005],
+    [2006, 2010],
+    [2011, 2015],
+    [2016, 2020],
+]
+
+target = "OIL_USD"
+ref = "GOLD_USD"
+
+# ranking_period = 2001-2015 だけで選ばれた代表戦略を固定。
+signal_type = "sma"
+counter_trade = false
+use_excess_return = false
+threshold_width = 1.0
+hold_days = 20
+start_days = 1
+sma_period = 200
+
+# Target自身の前営業日までの情報だけで判定。
+direction_sma_window = 200
+filter_direction = "down"
+
+# OIL_USD <- GOLD_USD × OIL down の最終OOS。
+# 2001-2020の結果を確認した後、2021-2025を見る前に条件を固定。
+[regime_strategy_final_oos]
+period = [2021, 2025]
+
+target = "OIL_USD"
+ref = "GOLD_USD"
+
+signal_type = "sma"
+counter_trade = false
+use_excess_return = false
+threshold_width = 1.0
+hold_days = 20
+start_days = 1
+sma_period = 200
+
+direction_sma_window = 200
+filter_direction = "down"
+
+# baselineは既存OIL cost=0.03をそのまま使用。
+# stressはそのbaseline損益からさらに0.5%/tradeを引く。
+stress_extra_cost_pct = 0.5
+
+# 最終OOSを見る前に固定する判定条件。
+min_closed_trades = 15
+min_baseline_average_pct = 0.0
+min_baseline_median_pct = 0.0
+min_baseline_win_rate = 50.0
+require_down_better_than_up = true

@@ -1,6 +1,6 @@
 # RESEARCH_HYPOTHESES
 
-最終更新: **2026-08-29**
+最終更新: **2026-08-30**
 
 このファイルは、`trade-test` で現在までに分かっている
 **銘柄関係・市場現象・有力仮説**をまとめるための研究ノートです。
@@ -27,11 +27,15 @@ C   弱い / 優先度低い
 
 これは「利益が保証される順位」ではありません。
 
+見出しに残っている `1.` `2.` などの番号は、
+この研究ノート内での**仮説ID**です。
+現在の優先順位は後半の「現時点の総合研究順位」を見てください。
+
 特に、
 
 - インサンプル
-- 2016–2020のOOS
-- 2021年以降
+- 2016–2020のdevelopment OOS
+- 2021–2025のfinal OOS
 - Pairの研究edge
 - 実際の売買P&L
 
@@ -39,11 +43,11 @@ C   弱い / 優先度低い
 
 ---
 
-# 1. 現時点の最重要仮説
+# 1. Pair最終OOSと現在の最重要仮説
 
-## A+ 1. 中部電力 / 関西電力の短中期relative-value回帰
+## 旧A+ → B-/C 1. 中部電力 / 関西電力の短中期relative-value回帰
 
-### 仮説
+### 元の仮説
 
 > 中部電力と関西電力の相対価格が大きく乖離すると、
 > 20日前後の短中期で乖離が縮小しやすい。
@@ -70,28 +74,100 @@ hedge ratio           約 0.8482
 20日以内完全回帰      約 55.6%
 ```
 
-### なぜ重要か
+この時点では非常に有力だった。
 
-探索期間で強かっただけでなく、
-**未知期間の価格でhedge ratioを再推定しなくても残った**。
+### 実売買に近づけた2016–2020 development
 
-現在のPair Researchで最も強い候補。
+最終OOSを見る前に、次を固定した。
 
-### 注意
+```text
+z-score        60日
+entry          ±2σ
+execution      signal翌営業日終値
+exit           zero cross確認後の翌営業日
+max hold       20営業日
+hedge          2001–2015 OLS固定
+direction      両方向
 
-2016–2020を見た後で候補選定しているため、
-2016–2020は今後 development data と考える。
+baseline cost
+    10 bps / turnover
+    short 0.5 bps / day
 
-**2021年以降はまだ見ない。**
+stress cost
+    20 bps / turnover
+    short 1.0 bps / day
+```
+
+2016–2020:
+
+```text
+trades             20
+
+gross average      +0.412%
+gross median       +1.175%
+gross win rate     65.0%
+
+baseline average   +0.171%
+baseline median    +0.926%
+baseline win rate  65.0%
+
+stress average     -0.070%
+```
+
+研究用spread edgeから実売買P&Lへ変えるとかなり薄くなったが、
+baselineではまだプラスだった。
+
+### 2021–2025 FINAL OOS
+
+条件を変更せず、一度だけ最終OOSを評価。
+
+```text
+closed trades      23
+open at period end 1
+
+gross
+    average         +0.381%
+    median          +0.595%
+    win rate        60.9%
+    sleeve return   +8.365%
+
+baseline
+    average         +0.142%
+    median          +0.349%
+    win rate        60.9%
+    t               +0.266
+    sleeve return   +2.577%
+
+stress
+    average         -0.097%
+    sleeve return   -2.915%
+```
+
+### 現在の正式評価
+
+```text
+B- / C
+```
+
+現象は完全には消えていないが、
+
+- baseline edgeがかなり小さい
+- stressではマイナス
+- 主力戦略としての強さはない
+
+ため、**A+候補から正式に降格**。
+
+今後は本命として追わず、
+structural breakやrelative-value研究の参考例として残す。
 
 ---
 
-## A+ 2. 中部電力 / 九州電力の短中期relative-value回帰
+## 旧A+ → 脱落 2. 中部電力 / 九州電力の短中期relative-value回帰
 
-### 仮説
+### 元の仮説
 
-> 中部電力と九州電力も、
-> 大きな相対価格乖離後に20日前後で縮小しやすい。
+> 中部電力と九州電力の相対価格も、
+> 大きく乖離したあと20日前後で縮小しやすい。
 
 ### 2001–2015 Discovery
 
@@ -111,36 +187,163 @@ hedge ratio           約 0.8727
 プラス率              約 56.3%
 ```
 
-### 評価
+### 実売買に近づけた2016–2020 development
 
-中部/関西と並ぶPair本命。
-
-### 最大の注意
-
-この2つは、
+同じ固定ルールで、
 
 ```text
-中部 / 関西
-中部 / 九州
+trades             20
+
+gross average      +0.879%
+gross median       +1.125%
+gross win rate     70.0%
+gross t            +1.98
+
+baseline average   +0.635%
+baseline median    +0.871%
+baseline win rate  70.0%
+
+stress average     +0.391%
 ```
 
-の両方に中部電力が入る。
+と非常に強かった。
 
-したがって、
+### 2021–2025 FINAL OOS
 
-> 独立した2個のedge
+しかし、条件を一切変えずに最終OOSへ進めると、
 
-ではなく、
+```text
+closed trades      18
 
-> **中部電力を中心とする1つのrelative-valueテーマ**
+gross
+    average         -0.334%
+    median          -0.657%
+    win rate        44.4%
+    sleeve return   -6.192%
 
-かもしれない。
+baseline
+    average         -0.575%
+    median          -0.907%
+    win rate        38.9%
+    t               -1.168
+    sleeve return   -10.199%
 
-将来のポートフォリオでは完全な分散と数えない。
+stress
+    average         -0.816%
+    sleeve return   -14.044%
+```
+
+となった。
+
+### 現在の正式評価
+
+```text
+脱落
+```
+
+**コストを入れる前のgrossからマイナス**なので、
+「コストが高すぎて消えた」のではない。
+
+現在の単純Pair戦略としては、
+2021–2025で平均回帰edgeが再現しなかったと判断する。
+
+この結果を見て、
+
+```text
+2σ → 1.8σ
+60日 → 90日
+20日 → 15日
+上側だけ売買
+```
+
+などへ変更して同じ2021–2025を再評価しても、
+それは新しいdevelopment研究であり、
+final OOSのやり直しとは扱わない。
 
 ---
 
-## A+ 3. GOLD_USD → OIL_USD は、OILが長期下降局面で特に強い
+## Pair Portfolioの最終結論
+
+最終OOS前に、
+
+```text
+中部 / 関西  50%
+中部 / 九州  50%
+```
+
+の固定sleeve方式も決めた。
+
+### 2016–2020 development
+
+```text
+closed trades        40
+
+gross
+    terminal return  +13.321%
+    CAGR             +2.533%
+
+baseline
+    terminal return  +7.978%
+    CAGR             +1.547%
+
+stress
+    terminal return  +2.875%
+    CAGR             +0.568%
+```
+
+### 2021–2025 FINAL OOS
+
+```text
+closed trades        41
+
+gross
+    terminal return  +1.087%
+    CAGR             +0.216%
+
+baseline
+    terminal return  -3.811%
+    CAGR             -0.774%
+
+stress
+    terminal return  -8.480%
+    CAGR             -1.757%
+```
+
+final OOS前に決めた判定基準は、
+
+```text
+baseline > 0 & stress > 0
+    強く合格
+
+baseline > 0 & stress <= 0
+    合格だがコストに弱い
+
+baseline <= 0
+    不合格
+
+closed trades < 20
+    判断保留
+```
+
+だった。
+
+したがって、
+
+> **50/50 Pair Portfolio は正式に最終OOS不合格。**
+
+Pair本命2組を中心とした研究はここで一区切りとする。
+
+重要な教訓:
+
+> Discoveryと最初のOOSで強くても、
+> 売買ルールを固定した本当の未知期間でedgeが消えることはある。
+
+これは失敗を隠すのではなく、
+**最終ホールドアウトが正しく機能した例**として残す。
+
+---
+
+## 旧A+ → B- 3. GOLD_USD → OIL_USD × OIL down
 
 表記:
 
@@ -157,22 +360,23 @@ signal          sma
 threshold       1
 sma_period      200
 counter_trade   false
+use_excess_return false
+hold_days       20
+start_days      1
 
 IS trades       192
 IS average      約 +2.057% / trade
 IS t            約 2.98
 ```
 
-2016–2020:
+2016–2020の元戦略:
 
 ```text
-OOS trades      67
+trades          67
 平均            約 +2.094%
 中央値          約 +4.610%
 勝率            約 59.7%
 ```
-
-元戦略自体がかなり強い。
 
 ### Regime仮説
 
@@ -183,54 +387,130 @@ TargetであるOILが、
 ```
 
 の **down regime** のとき、
-GOLD → OIL戦略が特に強い。
+GOLD → OIL戦略が特に強い、という仮説。
 
-4期間の `down - up` 平均差:
+2001–2020の実トレード再確認:
 
 ```text
-2001–2005   約 +5.24%
-2006–2010   約 +6.87%
-2011–2015   約 +1.88%
-2016–2020   約 +5.70%
+期間          all平均     down平均     up平均      down-up
+2001–2005    +1.137%     +5.269%      +0.026%     +5.243%
+2006–2010    +3.152%     +7.457%      +0.590%     +6.866%
+2011–2015    +1.391%     +2.150%      +0.268%     +1.882%
+2016–2020    +2.094%     +5.155%      -0.541%     +5.696%
 ```
 
 **4/4期間で down > up。**
 
-2016–2020:
+2001–2020のdown限定をまとめると、
 
 ```text
+trades       112
+平均         約 +4.694%
+中央値       約 +5.286%
+勝率         約 66.1%
+t            約 4.12
+```
+
+long / shortの両方でdevelopment edgeが確認されたため、
+final OOS前にlongだけへ絞ることはしなかった。
+
+### 2021–2025 FINAL OOS
+
+事前固定条件:
+
+```text
+strategy
+    sma / threshold=1
+    sma_period=200
+    counter_trade=false
+    hold=20
+    start=1
+    long / short両方
+
+regime
+    OIL前営業日終値
+    <
+    OIL前営業日200日SMA
+
+baseline
+    既存OIL cost=0.03を使用
+
+stress
+    baseline損益からさらに0.5% / trade
+```
+
+事前判定結果:
+
+```text
+verdict = WEAK_PASS
+```
+
+2021–2025:
+
+```text
+全体
+    trades             71
+    baseline average   -0.252%
+
 OIL down
-平均        約 +5.15%
-中央値      約 +5.88%
+    trades             36
+    baseline average   +0.029%
+    baseline median    +0.324%
+    baseline win rate  52.8%
+    baseline t         +0.027
+    stress average     -0.471%
 
 OIL up
-平均        約 -0.54%
-中央値      約 -0.36%
+    trades             35
+    baseline average   -0.541%
+
+down - up
+    average difference +0.571%
 ```
 
-long / shortに分けてもdown優位が残った。
-
-### 現在の解釈
-
-単に、
-
-> OIL下落局面だからショートが儲かった
-
-だけでは説明しにくい。
-
-現在のRegime Researchで最重要の仮説。
-
-### 将来の使い方
-
-本体へRegimeを統合する場合の第一候補:
+### 現在の正式評価
 
 ```text
-GOLD → OIL のシグナル
-+
-OILが200日SMAより下
+Regime現象:
+    合格
+    down > up はfinal OOSでも再現
+
+売買戦略:
+    見送り
+    baseline edgeはほぼゼロ
+    stressではマイナス
+
+総合:
+    B-
 ```
 
-ただし、まだ本体へ組み込まない。
+重要なのは、
+
+> **「OIL downの方がOIL upより良い」という相対的なRegime差は
+> final OOSでも残ったが、それだけでは十分な絶対収益にならなかった。**
+
+という点。
+
+Pair研究とは違い、
+Regime現象自体が完全に消えたわけではない。
+
+一方で、final OOSを見た後に、
+
+```text
+200日SMA → 150日
+20日hold → 10日
+shortを除外
+threshold 1.0 → 1.2
+強いdownだけ選別
+```
+
+などへ変更して同じ2021–2025を再評価しても、
+それは新しいdevelopment研究であり、
+final OOSのやり直しとは扱わない。
+
+現在は主力候補から外し、
+**Regime研究として有用な成功例 / 売買戦略としては弱い例**
+として保存する。
 
 ---
 
@@ -295,10 +575,15 @@ AUD_JPYが、
 
 ### 現在の評価
 
-OIL←GOLD × down に次ぐ、
-非常にきれいなRegime仮説。
+**現在の最優先Regime仮説。**
 
-将来の固定フィルタ候補:
+OIL←GOLD × down はfinal OOSでRegime差こそ再現したが、
+絶対edgeはほぼ消え、stressではマイナスだった。
+
+そのため次はこのAUD_JPY仮説を、
+同じ厳格な手順で検証する。
+
+固定フィルタ候補:
 
 ```text
 EUR_GBP → AUD_JPY
@@ -1253,57 +1538,92 @@ OIL
 中部 / 九州
 ```
 
-### ポートフォリオでの意味
+当初は2本ともA+候補だったが、
+2021–2025 FINAL OOSでは50/50 Portfolioが不合格。
 
-戦略数ではなく、
+```text
+baseline terminal return   -3.811%
+stress terminal return     -8.480%
+```
 
-> **独立したリスクテーマ数**
+現在は、
 
-で見る必要がある。
+```text
+中部 / 関西
+    B-/C
+    weak positive
+
+中部 / 九州
+    脱落
+```
+
+とする。
+
+### 研究上の意味
+
+このクラスターは現在の有力戦略ではなく、
+
+- 共通銘柄を持つ複数edgeを独立と数えない
+- developmentで強くてもfinal OOSで崩れる
+- structural breakを疑う
+- OOS後の救済最適化をしない
+
+という教訓を残す研究例として扱う。
 
 ---
 
 # 14. 現時点の総合研究順位
 
-## A+
+PairとOIL←GOLDのfinal OOSを反映した**現在順位**。
 
-1. **中部電力 / 関西電力**
-2. **中部電力 / 九州電力**
-3. **OIL_USD ← GOLD_USD × OIL down**
+## A / 最優先
 
-## A
-
-4. **AUD_JPY ← EUR_GBP × AUD_JPY up**
+1. **AUD_JPY ← EUR_GBP × AUD_JPY up**
 
 ## B+
 
-5. **OIL_USD ← GOLD_USD × high_vol**
-6. **OIL_USD ← COPPER_USD**
-7. **COPPER_USD / OIL_USD の2.5σ大乖離**
-8. **OIL_USD ← SILVER_USD × OIL down**
-9. **EUR_GBP → 複数FXという情報源テーマ**
-10. **AUD_NZD → クロス円という情報源テーマ**
+2. **OIL_USD ← GOLD_USD × high_vol**
+3. **OIL_USD ← COPPER_USD**
+4. **COPPER_USD / OIL_USD の2.5σ大乖離**
+5. **OIL_USD ← SILVER_USD × OIL down**
+6. **EUR_GBP → 複数FXという情報源テーマ**
+7. **AUD_NZD → クロス円という情報源テーマ**
 
 ## B
 
-11. **EUR_JPY ← AUD_NZD × EUR_JPY down**
-12. **GBP_JPY ← AUD_NZD**
-13. **GBP_USD ← EUR_GBP**
-14. **AUD_USD ← EUR_GBP**
-15. **GOLD_USD ← EUR_GBP**
-16. **OIL_USD ← NZD_USD**
+8. **EUR_JPY ← AUD_NZD × EUR_JPY down**
+9. **GBP_JPY ← AUD_NZD**
+10. **GBP_USD ← EUR_GBP**
+11. **AUD_USD ← EUR_GBP**
+12. **GOLD_USD ← EUR_GBP**
+13. **OIL_USD ← NZD_USD**
+
+## B- / 現象は残ったが主力見送り
+
+- **OIL_USD ← GOLD_USD × OIL down**
+  - 2021–2025で `down > up` は再現
+  - down baseline平均 +0.029%
+  - stress平均 -0.471%
+  - Regime現象は合格、売買戦略としては見送り
 
 ## B- / 追加検証
 
-17. **CHF_JPY ← AUD_NZD**
-18. **EUR_USD ← EUR_GBP**
-19. **GBP_JPY ← USSPX500_Futures**
-20. **NQ100_Futures ← USD_CHF**
-21. **GBP_JPY ← GBP_CHF**
-22. **UK100_Futures ← SILVER_USD**
-23. **US30_Futures ← SILVER_USD**
-24. **AUD_JPY ← GBP_CHF**
-25. **USD_JPY ← USSPX500_Futures**
+14. **CHF_JPY ← AUD_NZD**
+15. **EUR_USD ← EUR_GBP**
+16. **GBP_JPY ← USSPX500_Futures**
+17. **NQ100_Futures ← USD_CHF**
+18. **GBP_JPY ← GBP_CHF**
+19. **UK100_Futures ← SILVER_USD**
+20. **US30_Futures ← SILVER_USD**
+21. **AUD_JPY ← GBP_CHF**
+22. **USD_JPY ← USSPX500_Futures**
+
+## B-/C / 観察
+
+- **中部電力 / 関西電力**
+  - final OOS baselineは弱くプラス
+  - stressではマイナス
+  - 主力候補から降格
 
 ## C / 優先度低
 
@@ -1314,65 +1634,136 @@ OIL
 - VIX → SPX500
 - TRY_JPY系
 
+## 脱落
+
+- **中部電力 / 九州電力**
+  - 2021–2025 final OOSでgrossからマイナス
+- **中部/関西 + 中部/九州 50/50 Pair Portfolio**
+  - baseline terminal return -3.811%
+
 ---
 
 # 15. 次に検証する順番
 
 ## 最優先
 
-Pair本命2組:
-
 ```text
-中部 / 関西
-中部 / 九州
-```
-
-について売買ルール固定。
-
-**2021年以降を見ない。**
-
----
-
-## Pairルール固定後
-
-2021+を最終OOSとして一度だけ評価。
-
-合格したら、
-
-```text
-backtest統合
-↓
-Walk-forward
-↓
-コスト耐性
-↓
-ポートフォリオ
-```
-
-へ進む。
-
----
-
-## Regime Research
-
-現状はいったん一区切り。
-
-将来、本体へ固定フィルタとして導入する候補:
-
-```text
-第1候補:
-OIL ← GOLD
-+
-OIL down
-
-第2候補:
 AUD_JPY ← EUR_GBP
 +
 AUD_JPY up
 ```
 
-Regimeの20 / 252 / 200は
-今回の結果を見て変更しない。
+固定Regime定義:
+
+```text
+前営業日のAUD_JPY終値
+>=
+前営業日のAUD_JPY 200日SMA
+```
+
+2001–2015で固定された代表戦略:
+
+```text
+signal          sma
+threshold       1
+sma_period      15
+counter_trade   false
+use_excess_return false
+hold_days       20
+start_days      1
+```
+
+この仮説は、
+
+```text
+2001–2005
+2006–2010
+2011–2015
+2016–2020
+```
+
+の4期間すべてで `up > down` が確認されている。
+
+次にやること:
+
+```text
+既存戦略を固定
+↓
+2001–2020で実トレード単位のRegime差を再確認
+↓
+合否基準・コスト耐性を2021+を見る前に固定
+↓
+2021–2025 FINAL OOSを一度だけ
+```
+
+変更しないもの:
+
+```text
+direction SMA     200日
+signal SMA        15日
+threshold         1
+hold              20営業日
+start             1営業日
+counter_trade     false
+```
+
+---
+
+## OIL_USD ← GOLD_USD × OIL down
+
+2021–2025 final OOSまで完了。
+
+```text
+verdict
+    WEAK_PASS
+
+Regime
+    down > up は再現
+
+絶対edge
+    down baseline平均 +0.029%
+    down stress平均   -0.471%
+```
+
+現在はB-。
+
+同じ2021–2025を使って、
+
+```text
+SMA変更
+hold変更
+threshold変更
+short除外
+down強度フィルタ追加
+```
+
+などを行い、final OOSとしてやり直さない。
+
+---
+
+## Pair Research
+
+中部/関西・中部/九州を使った現在のPair本命研究は終了。
+
+2021–2025はすでにfinal OOSとして開封済み。
+
+今後この期間を見て、
+
+```text
+entry threshold
+z lookback
+max hold
+片方向化
+Pair選択
+allocation
+```
+
+を変更した場合、
+それは**新しいdevelopment研究**として扱う。
+
+同じ2021–2025を再びfinal OOSとは呼ばない。
+
+2026年はPair final OOSで未使用。
 
 ---
 
@@ -1389,6 +1780,8 @@ Regimeの20 / 252 / 200は
 
 4. **Structural break**
    - 市場関係がいつ変化したか
+   - 中部/関西・中部/九州は重要な教材
+   - ただし2021–2025を使った救済最適化とは分ける
 
 5. **Strategy return correlation / clustering**
    - 戦略本数ではなく独立edge数を評価
@@ -1402,27 +1795,37 @@ Regimeの20 / 252 / 200は
 
 1. 予測型とPair Researchは別現象。
 2. Regime Researchは予測型戦略の市場環境依存を見る研究。
-3. Pair本命は中部/関西と中部/九州。
-4. この2本は中部電力を共有するため完全独立ではない。
-5. Pairの2021+はまだ最終ホールドアウト。
-6. OIL←GOLD × OIL down が現在最強のRegime仮説。
-7. AUD_JPY←EUR_GBP × up も4期間再現。
-8. EUR_GBP系=low_volという一般化は棄却。
-9. AUD_NZD系=downという一般化も一律には採用しない。
-10. OIL Target戦略もRefごとにRegimeが異なる。
-11. COPPER/OILは予測型と2.5σPairの両方で面白いが別戦略。
-12. 弱い戦略を後付けRegimeで救済しない。
-13. 研究結果を見た後の細かいパラメータ調整を避ける。
-14. 次にやるのはPair本命2組の単純売買ルール固定。
+3. Pair 50/50 Portfolioは2021–2025 final OOSで正式に不合格。
+4. 中部/九州はPair候補から脱落。
+5. 中部/関西はweak positiveだがB-/Cへ降格。
+6. OIL←GOLD × OIL down は2021–2025 final OOSまで完了。
+7. OIL←GOLDは `down > up` のRegime差自体はfinal OOSでも再現。
+8. ただしdown baseline平均は+0.029%、stress平均は-0.471%。
+9. OIL←GOLD × down は現在B-で、実用戦略としては見送り。
+10. OIL←GOLDの2021–2025を条件変更してfinal OOSとしてやり直さない。
+11. **AUD_JPY←EUR_GBP × AUD_JPY up が現在の最優先仮説。**
+12. EUR_GBP系=low_volという一般化は棄却。
+13. AUD_NZD系=downという一般化も一律には採用しない。
+14. OIL Target戦略もRefごとにRegimeが異なる。
+15. COPPER/OILは予測型と2.5σPairの両方で面白いが別戦略。
+16. 弱い元戦略を後付けRegimeで救済しない。
+17. 研究結果を見た後の細かいパラメータ調整を避ける。
+18. 次にやるのはAUD_JPY←EUR_GBP × AUD_JPY upの実トレード再確認。
 
 ---
 
 # 18. 再開地点
 
-> **中部電力/関西電力と中部電力/九州電力について、2021年以降を見ずに単純なPair売買ルールを固定する。**
+> **Pairはfinal OOS不合格。OIL←GOLD × OIL down はRegime差のみ再現し、売買戦略としては見送り。次は `AUD_JPY ← EUR_GBP × AUD_JPY up` を、既存の200日SMAレジーム定義を変えずに検証する。**
 
-Regimeを再開するときは、
+まず、
 
-> **OIL←GOLD × OIL down と AUD_JPY←EUR_GBP × AUD_JPY up を、固定条件として本体へ統合する価値があるか検討する。**
+```text
+2001–2020
+```
 
-から始める。
+だけを使って、
+既存の固定戦略について `up / down` の実トレード差を再確認する。
+
+その結果が既存Regime研究と一致すれば、
+2021–2025を開ける前に合否基準とコスト耐性を固定する。
