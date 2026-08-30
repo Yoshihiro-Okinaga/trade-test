@@ -1,0 +1,10 @@
+metric,value,note
+full_ranking_rows,64714.000000000,trade_count>=30で残った全設定
+pair_count,930.000000000,target/refごとに1本の中心戦略
+center_min_trade_count,150.000000000,従来のbest-t選抜条件を維持
+neighbor_min_trade_count,30.000000000,近傍観測用。中心選抜には使わない
+self_pair_count,30.000000000,自己価格Ref。cross-marketとは別扱い
+non_self_pair_count,900.000000000,cross-market候補
+median_center_t,1.386432361,中心best-tの中央値
+median_neighbor_mean_t,0.497791776,局所近傍t平均の中央値
+median_neighbor_coverage,1.000000000,期待近傍のうちCSVに残った割合

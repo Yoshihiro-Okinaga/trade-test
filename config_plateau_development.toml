@@ -1,0 +1,821 @@
+# Golden Allはsymbol_groupsはfx, index, commodity
+# GoldenはEUR_GBP,GBP_CHF,AUD_USD,AUD_NZD,GBP_USD
+# use_excess_returnはtrue, false両方
+# walkforwardはfalseのみ
+
+# 使う銘柄。ref（シグナル源）と target（売買対象）の両方に使う。
+# symbol_groups でまとめて選ぶ（"fx" / "index" / "commodity" / "stock"）。
+# symbol_names で個別に追加もできる（両方書けば合算される）。
+# 銘柄の定義はすべて下の [symbols] にあり、グループもそこで宣言する。
+symbol_groups = [
+    "fx",
+    "index",
+    "commodity",
+    #"stock",
+]
+
+# グループに含まれない銘柄を個別に足したいときに使う。
+symbol_names = [
+    # "EUR_GBP",
+    # "GBP_CHF",
+    # "AUD_USD",
+    # "AUD_NZD",
+    # "GBP_USD",
+    # #"CAD_JPY",
+    # #"USD_CHF",
+]
+
+# ref には使うが target からは外す銘柄（コストが高い、取引困難など）。
+exclude_names = [
+    #"CBOE_Volatility_Index",
+]
+
+# 総当たりの代わりに、この (target ← ref) ペアだけを回す。
+# 空/未指定なら従来どおり symbol_groups × symbol_names の総当たり。
+# 2001～2015で作ったデータ
+symbol_pairs_use = false
+symbol_pairs = [
+    # Gemini, Clause, ChatGPT の共通候補。全ての指標で強い。
+    { target = "GBP_USD",       ref = "EUR_GBP" },
+    { target = "AUD_USD",       ref = "EUR_GBP" },
+    #{ target = "OIL_USD",       ref = "COPPER_USD" },
+    # 2つでの共通候補
+    { target = "EUR_JPY",       ref = "AUD_NZD" },
+    #{ target = "OIL_USD",       ref = "NZD_USD" },
+    #{ target = "OIL_USD",       ref = "GOLD_USD" },
+    # CBOEを使う
+    { target = "NQ100_Futures",      ref = "CBOE_Volatility_Index" },
+    { target = "UK100_Futures",      ref = "CBOE_Volatility_Index" },
+    { target = "US30_Futures",       ref = "CBOE_Volatility_Index" },
+    { target = "USSPX500_Futures",   ref = "CBOE_Volatility_Index" },
+]
+
+symbol_pairs_all = [
+    # =========================================================
+    # Gemini
+    # =========================================================
+    # --- 超優良FXペア（EUR_GBPの先行指標としての強さ） ---
+    { target = "GBP_USD",       ref = "EUR_GBP" },             # best t_value=3.11。di(sma10, 閾値20)やsma(sma15)で機能。直近2期間も安定してプラス推移の極めて堅牢なペア。
+    { target = "AUD_USD",       ref = "EUR_GBP" },             # best t_value=3.08。di(sma10)で機能。GBP_USD同様、EUR_GBPがメジャー通貨のシグナルとして強く機能。
+    { target = "AUD_JPY",       ref = "EUR_GBP" },             # best t_value=2.72。sma(sma15)で機能。2016以降も平均+0.4%以上をキープしており、クロス円の分散候補として優秀。
+
+    # --- 超優良コモディティペア（長期トレンドでの強さ） ---
+    { target = "OIL_USD",       ref = "GOLD_USD" },            # best t_value=2.98。sma(sma200)等で機能。1トレード平均+2.0%超と期待値が非常に高く、直近の成績も優秀。
+    { target = "OIL_USD",       ref = "COPPER_USD" },          # best t_value=2.90。sma(sma100)やchange(sma50)など複数指標で機能。一貫して高い利益率を誇る。
+
+    # --- 異種アセットペア ---
+    { target = "GBP_JPY",       ref = "USSPX500_Futures" },    # best t_value=2.81。bb(sma200)で機能。米国株価指数とクロス円の相関を突く戦略として有力。
+
+    # =========================================================
+    # Claude
+    # =========================================================
+
+    # =========================================================
+    # 本命（リスク調整で上位、かつ経済的な筋が通る）
+    # =========================================================
+
+    #{ target = "GBP_USD",       ref = "EUR_GBP" },             # RA=0.178で全候補トップ級。t=2.56・勝率59%・std2.5%と低ボラで安定。EUR対GBPの相対がGBP_USDに効く。sma順張り(sma=50)が最良
+    #{ target = "AUD_USD",       ref = "EUR_GBP" },             # RA=0.143。共有通貨ゼロ＝算術連動でない本物のクロス市場関係。16-20/21-とも+0.51で近年も安定。bb順張り(sma=100)
+    { target = "CHF_JPY",       ref = "AUD_NZD" },             # RA=0.140。勝率60%は候補中最高水準。豪NZの相対（リスク選好の代理）がリスクオフ通貨に波及。sma順張り(sma=100)
+    { target = "GBP_JPY",       ref = "UK100_Futures" },       # RA=0.139。英株指数→ポンド円。自国株と自国通貨のリスク選好経路で筋が明快。EUR_GBP系と完全に独立。bb順張り(sma=200)
+    { target = "OIL_USD",       ref = "NZD_USD" },             # RA=0.147。16-20:+1.77 / 21-:+1.41と近年の強さは屈指。コモディティ通貨→原油。ただしstd9.6%と高ボラ、サイズは小さめに
+    { target = "NQ100_Futures", ref = "USD_CHF" },             # RA=0.146。唯一の逆張り採用。安全資産スイスフランの動きから米株指数の反発を取る。16-20:+0.95 / 21-:+1.40と近年型
+
+    # =========================================================
+    # 第二候補（有望だが、本命と同源または低RA）
+    # =========================================================
+
+    { target = "EUR_JPY",       ref = "AUD_NZD" },             # RA=0.129・t=2.07。CHF_JPY←AUD_NZDと同源なので、両方使うなら実質1.5本程度と見積もる
+    { target = "GOLD_USD",      ref = "EUR_GBP" },             # RA=0.118。EUR_GBP系だが対象が金＝別市場。上2つと同源な点に注意（分散にはならない）
+    #{ target = "OIL_USD",       ref = "COPPER_USD" },          # RA=0.075と低いが、銅（景気先行指標）→原油は経済的な筋が最も明快。21-:+1.38と近年強い
+
+    # =========================================================
+    # ChatGPT
+    # =========================================================
+
+    # =========================================================
+    # 本命
+    # =========================================================
+
+    # 多数の設定・複数指標で強い。期間外でも非常に高い成績。
+    #{ target = "OIL_USD", ref = "COPPER_USD" },
+
+    # SMA / change の両方で強く、2016年以降も非常に安定。
+    #{ target = "OIL_USD", ref = "GOLD_USD" },
+
+    # FX系では最有力。上位設定が多く、5種類の指標で再現。
+    #{ target = "AUD_USD", ref = "EUR_GBP" },
+
+    # 上位設定数・指標数が非常に多い。6種類の指標で再現。
+    #{ target = "GBP_USD", ref = "EUR_GBP" },
+
+    # 設定数は少ないが、2016年以降の期待値が非常に高い。
+    #{ target = "OIL_USD", ref = "NZD_USD" },
+
+    # 複数指標で再現し、2016年以降も安定。
+    { target = "GBP_JPY", ref = "GBP_CHF" },
+
+
+    # =========================================================
+    # 第二候補
+    # =========================================================
+
+    # 原油系の中ではかなり良い。2016年以降もプラス。
+    { target = "OIL_USD", ref = "SILVER_USD" },
+
+    # AUD_NZDをRefとするクロス円の有力候補。
+    #{ target = "EUR_JPY", ref = "AUD_NZD" },
+
+    # EUR_GBP系の横展開。期待値は小さいが安定性がある。
+    { target = "NZD_USD", ref = "EUR_GBP" },
+
+    # 2021年以降の成績が良い。
+    { target = "CAD_JPY", ref = "AUD_NZD" },
+
+    # 複数設定で2016年以降もプラス。
+    { target = "EUR_USD", ref = "EUR_GBP" },
+
+    # SILVER系で比較的安定。
+    { target = "UK100_Futures", ref = "SILVER_USD" },
+
+
+    # =========================================================
+    # 第三候補・追加検証
+    # =========================================================
+
+    # 2021年以降が特に強いが、上位設定は少ない。
+    { target = "USD_JPY", ref = "USSPX500_Futures" },
+
+    # 2021年以降の原油への予測力が非常に強いが、
+    # 上位設定が少ないので追加検証向き。
+    { target = "OIL_USD", ref = "USD_CAD" },
+
+    # 期間外は良好だが、再現する設定数は少ない。
+    { target = "US30_Futures", ref = "SILVER_USD" },
+
+    # 期間外成績は良いがZAR固有のリスクが大きい。
+    #{ target = "ZAR_JPY", ref = "AUD_NZD" },
+    # 期間外は安定しているが、上位設定数はまだ少ない。
+    { target = "AUD_JPY", ref = "GBP_CHF" },
+
+    # AUD_NZD系として面白い追加候補。
+    { target = "GBP_JPY", ref = "AUD_NZD" },
+]
+
+signal_type_list = [
+    "change",
+    "sma",
+    "bb",
+    #"macd",
+    #"rsi",
+    "di",
+    "stoch",
+    #"streak",
+]
+
+hold_days_list = [
+    #5,
+    #10,
+    20,
+    #30,
+    #40,
+    #50,
+    #60,
+]
+
+start_days_list = [
+    1,
+]
+
+sma_period_list = [
+    10,
+    15,
+    #20,
+    50,
+    100,
+    200,
+]
+
+counter_trade = [
+    true,
+    false,
+]
+no_overlap = true             # 重複補正あり
+
+# 超過リターン評価。true にすると、各トレードの損益から
+# 「その銘柄を単に保有していた場合の平均的な変動」を差し引く。
+# long の追い風と short の逆風が除去され、市場の方向バイアスを
+# 除いた純粋な優位性を測れる。false なら従来通りの実損益。
+# リストで書くと両方を1回の実行で比較できる。
+use_excess_return = [
+    #true, 
+    false,
+]
+
+# 期間別の成績を出すための区切り年。
+# [2001, 2006, ...] と書くと 2001-2005, 2006-2010, ... に分けて
+# average_pct_2001_2005 のような列を出力する（trade_count も併記）。
+# 空リスト [] なら期間別の集計をしない。
+#period_years = []
+period_years = []
+
+# 期間の設定
+ranking_period = [2016, 2020]
+
+# エクストラコスト
+#extra_cost_pct = 0.1
+
+# 売買フィルタ。指定した指標の値が filter_max 以下の日だけエントリーする。
+# adx は「トレンドの強さ」で方向を持たないため単独売買には使えないが、
+# 「トレンドが弱い（レンジ）ときだけ逆張りする」という絞り込みに使える。
+# 空文字 "" にするとフィルタなし（従来と同じ挙動）。
+filter_signal_type = "" #"adx"
+filter_max = 25.0
+trade_code_type = "all"      # "same", "not_same", "all"
+# DevelopmentではISで固定済みのtaskを
+# できるだけ欠落させず答え合わせする。
+# 5未満はt値が不安定すぎるので除外する。
+min_trade_count = 5
+use_process_pool = true
+
+# true にすると、各タスクの実行時間（秒）を task_elapsed_seconds 列として
+# CSVに出力する。実行ごとに値が変わるため、Golden作成時はfalseにする。
+output_task_time = false
+
+# 売買判定の閾値（幅）。|signal| がこの値を超えたら売買する。
+# 指標ごとに値のスケールが違うので、指標ごとに設定する。
+# ここに書かない指標は default_threshold_width が使われる。
+default_threshold_width = 1.0
+
+# 数値を書けば1通り、リストを書けばその全通りを別タスクとして試す。
+# 例: bb = [1.0, 1.5, 2.0, 2.5, 3.0] で5通りの閾値を一度に比較できる。
+# 指標ごとに値のスケールが違うので、リストも指標ごとに指定する。
+[threshold_width]
+bb = [1.0, 1.5, 2.0, 2.5, 3.0]
+rsi = 20.0
+stoch = 30.0
+di = 20.0
+# macd はヒストグラムのゼロ交差を +1 / -1 / 0 で表すため、
+# 0.5 にしておけば「交差した日だけ」シグナルが成立する。
+macd = 0.5
+# streak は連続日数そのもの。2.5 なら「3日以上の連続」で成立する。
+streak = 2.5
+
+# 指標の中心値。rsi/stoch は 0〜100 の範囲で中心 50。
+# rsi は 30/70、stoch は 20/80 で判定する。
+# ここに書かない指標は中心 0 とみなす（bb, change, sma, macd, di）。
+[threshold_center]
+rsi = 50.0
+stoch = 50.0
+
+
+# 売買コスト（値幅）。銘柄ごとに、仕掛け時に1回だけ引かれる片道コスト。
+# 元コードで判明している値のみ設定済み。残りは 0.0 なので、
+# 実際のブローカーのスプレッドが分かり次第、各自で埋めること。
+# ここが 0.0 のままだと、その銘柄はコストなしで評価される点に注意。
+# 銘柄ごとの売買コストとスワップ。
+# cost: 仕掛け時に1回だけ引く片道コスト（値幅）
+# swap: ロング保有時の日次スワップ率（％／日）。プラスならロングで受け取り、
+#       ショートは符号が反転する（売買が対称なブローカーを想定）。
+#       省略すると 0（株の現物や、値が不明な指数など）。
+
+# 銘柄の定義は、ここ1箇所だけに書く。
+# cost: 仕掛け時に1回だけ引く片道コスト（値幅）
+# swap: ロング保有時の日次スワップ率（％／日）。プラスならロングで受け取り、
+#       ショートは符号が反転する。省略すると 0。
+[symbols]
+EUR_GBP = { cost = 0.0001, swap = -0.00396, group = "fx" }
+EUR_USD = { cost = 0.00003, swap = -0.00319, group = "fx" }
+GBP_USD = { cost = 0.0001, swap = -0.00009, group = "fx" }
+USD_JPY = { cost = 0.002, swap = 0.00780, group = "fx" }
+AUD_JPY = { cost = 0.005, swap = 0.00891, group = "fx" }
+AUD_NZD = { cost = 0.0008, swap = 0.00477, group = "fx" }
+AUD_USD = { cost = 0.00004, swap = 0.00117, group = "fx" }
+CAD_JPY = { cost = 0.006, swap = 0.00355, group = "fx" }
+CHF_JPY = { cost = 0.008, swap = -0.00159, group = "fx" }
+EUR_AUD = { cost = 0.00015, swap = -0.00538, group = "fx" }
+EUR_CHF = { cost = 0.00015, swap = 0.00533, group = "fx" }
+EUR_JPY = { cost = 0.004, swap = 0.00412, group = "fx" }
+EUR_NZD = { cost = 0.00029, group = "fx" }
+GBP_AUD = { cost = 0.00015, swap = -0.00141, group = "fx" }
+GBP_CHF = { cost = 0.00028, swap = 0.00975, group = "fx" }
+GBP_JPY = { cost = 0.009, swap = 0.00791, group = "fx" }
+NZD_JPY = { cost = 0.007, swap = 0.00399, group = "fx" }
+NZD_USD = { cost = 0.00016, swap = -0.00291, group = "fx" }
+TRY_JPY = { cost = 0.014, swap = 0.07587, group = "fx" }
+USD_CAD = { cost = 0.0016, swap = 0.00985, group = "fx" }
+USD_CHF = { cost = 0.00016, swap = 0.00914, group = "fx" }
+ZAR_JPY = { cost = 0.009, swap = 0.01338, group = "fx" }
+CBOE_Volatility_Index = { cost = 0.09, group = "index" }
+#DAX_Futures = { cost = 3.0, group = "index" }
+#JAPAN255_Futures = { cost = 10.0, group = "index" }
+NQ100_Futures = { cost = 0.5, group = "index" }
+UK100_Futures = { cost = 3.0, group = "index" }
+US30_Futures = { cost = 4.0, group = "index" }
+USSPX500_Futures = { cost = 2.0, group = "index" }
+COPPER_USD = { cost = 0.02, group = "commodity" }
+GOLD_USD = { cost = 1.0, group = "commodity" }
+OIL_USD = { cost = 0.03, group = "commodity" }
+#PLATINUM_USD = { cost = 5.0, group = "commodity" }
+SILVER_USD = { cost = 0.1, group = "commodity" }
+"1963_日揮ホールディングス" = { cost = 0, group = "stock" }
+"3407_旭化成" = { cost = 0, group = "stock" }
+"5401_日本製鉄" = { cost = 0, group = "stock" }
+"6752_パナソニック" = { cost = 0, group = "stock" }
+"9501_東京電力ホールディングス" = { cost = 0, group = "stock" }
+"9502_中部電力" = { cost = 0, group = "stock" }
+"9503_関西電力" = { cost = 0, group = "stock" }
+"9504_中国電力" = { cost = 0, group = "stock" }
+"9505_北陸電力" = { cost = 0, group = "stock" }
+"9506_東北電力" = { cost = 0, group = "stock" }
+"9507_四国電力" = { cost = 0, group = "stock" }
+"9508_九州電力" = { cost = 0, group = "stock" }
+"9509_北海道電力" = { cost = 0, group = "stock" }
+
+
+[walkforward]
+train_years = 8            # 学習(選抜)期間の年数
+test_years = 1             # 検証(未知)期間の年数
+step_years = 1             # 前進幅。test_yearsと同じにすると未知期間が重ならない
+mode = "rolling"          # "anchored"(開始固定で拡大) / "rolling"(固定長スライド)
+# 選抜指標:
+#   成績の高さで選ぶ  : "t_value" / "average_pct" / "total_pct"
+#   ばらつきを割り引く: "lower_confidence_bound"(平均-k×標準誤差)
+#   時間的な一貫性重視: "year_t_value" / "worst_year_pct"(最悪年) /
+#                       "positive_year_ratio"(陽性年比率×平均) / "half_split_min"(前後半の低い方)
+select_metric = "worst_year_pct"
+select_per = "target"      # "target": Target銘柄ごと / "global": 全戦略まとめて
+select_top_k = 1           # "target"なら各Targetから上位N戦略、"global"なら全候補から上位N戦略を採用
+min_is_trades = 30         # 選抜に必要な学習期間の最小取引数
+min_is_t = 2.0             # 学習期間のt値がこの値未満の銘柄は見送る。0で無効
+# ポートフォリオ全体で同時に保有できる最大建玉数。0なら無制限。
+max_open_positions = 5
+
+
+# 相関・平均回帰研究
+# 2001～2015で選んだ候補を固定し、2016～2020を未知期間として検証する。
+# ここでは新しいペアを探索せず、pairs に書いたペアだけを調べる。
+[pair_research]
+period = [2016, 2020]
+hedge_fit_period = [2001, 2015]
+pairs = [
+    # FX・指数・商品
+    ["USD_CAD", "OIL_USD"],
+    ["AUD_USD", "OIL_USD"],
+    ["NZD_USD", "OIL_USD"],
+    ["COPPER_USD", "OIL_USD"],
+    ["US30_Futures", "USSPX500_Futures"],  # 高相関の対照群
+
+    # 日本株
+    ["9503_関西電力", "9509_北海道電力"],
+    ["9502_中部電力", "9509_北海道電力"],
+    ["9504_中国電力", "9506_東北電力"],
+    ["9502_中部電力", "9508_九州電力"],
+    ["9504_中国電力", "9508_九州電力"],
+    ["9502_中部電力", "9503_関西電力"],
+    ["9503_関西電力", "9508_九州電力"],  # 比較対象
+]
+
+# 既存シグナル戦略のレジーム研究
+#
+# ranking_period だけで各 target/ref の最良戦略を1本固定し、
+# その後の period で市場環境別に成績を分解する。
+# この段階ではレジームを売買フィルタには使わない。
+[regime_research]
+# 戦略は ranking_period = [2001, 2015] で1本に固定したまま、
+# 同じ戦略・同じレジーム定義を5年ごとに比較する。
+# 2001～2015は選抜期間内の記述的確認、2016～2020はOOS。
+periods = [
+    [2001, 2005],
+    [2006, 2010],
+    [2011, 2015],
+    [2016, 2020],
+]
+
+# Target自身の過去価格だけでレジームを判定する。
+# entry日の判定には前営業日までの情報しか使わない。
+volatility_window = 20
+volatility_baseline_window = 252
+direction_sma_window = 200
+min_trades_per_regime = 5
+
+# レジーム研究では、個別の当たり外れだけでなく、
+# 同じテーマ内で同じレジーム特性が再現するかを確認する。
+#
+# { target = "...", ref = "..." } の向きに注意。
+pairs = [
+    # =========================================================
+    # EUR_GBP 系
+    # 「EUR_GBPを先行指標とする戦略は低ボラで強いか」を横断確認する。
+    # =========================================================
+    { target = "GBP_USD", ref = "EUR_GBP" },
+    { target = "AUD_USD", ref = "EUR_GBP" },
+    { target = "NZD_USD", ref = "EUR_GBP" },
+    { target = "AUD_JPY", ref = "EUR_GBP" },
+    { target = "EUR_USD", ref = "EUR_GBP" },
+    { target = "GOLD_USD", ref = "EUR_GBP" },
+
+    # =========================================================
+    # AUD_NZD 系
+    # 「AUD_NZDを先行指標とするクロス円は下降局面で強いか」を確認する。
+    # =========================================================
+    { target = "EUR_JPY", ref = "AUD_NZD" },
+    { target = "CAD_JPY", ref = "AUD_NZD" },
+    { target = "CHF_JPY", ref = "AUD_NZD" },
+    { target = "GBP_JPY", ref = "AUD_NZD" },
+
+    # =========================================================
+    # 原油 Target 系
+    # Refごとに高ボラ/低ボラの性質が共通するか、異なるかを確認する。
+    # =========================================================
+    { target = "OIL_USD", ref = "GOLD_USD" },
+    { target = "OIL_USD", ref = "COPPER_USD" },
+    { target = "OIL_USD", ref = "NZD_USD" },
+    { target = "OIL_USD", ref = "USD_CAD" },
+    { target = "OIL_USD", ref = "SILVER_USD" },
+
+    # =========================================================
+    # 異種アセット
+    # FX内部や原油クラスターとは別のレジーム特性を確認する。
+    # =========================================================
+    { target = "GBP_JPY", ref = "USSPX500_Futures" },
+    { target = "GBP_JPY", ref = "UK100_Futures" },
+    { target = "NQ100_Futures", ref = "USD_CHF" },
+
+    # =========================================================
+    # VIX 系
+    # ボラティリティ指標そのものをRefにする戦略。
+    # Target自身の高/低ボラ判定との関係を見るため、代表2本を追加する。
+    # =========================================================
+    { target = "NQ100_Futures", ref = "CBOE_Volatility_Index" },
+    { target = "USSPX500_Futures", ref = "CBOE_Volatility_Index" },
+]
+
+# Pair Researchで残った本命2組を、実際の売買に近い形で検証する。
+# 2021年以降は最終holdoutとして温存するため、ここでは2016～2020まで。
+[pair_strategy_research]
+# FINAL OOS。2021-2025の5年間だけを一度評価する。
+# 2026年は今回読まず、将来のforward期間として残す。
+period = [2021, 2025]
+hedge_fit_period = [2001, 2015]
+
+pairs = [
+    ["9502_中部電力", "9503_関西電力"],
+    ["9502_中部電力", "9508_九州電力"],
+]
+
+# Pair discoveryで使ってきた設定をそのまま固定する。
+z_lookback = 60
+entry_z = 2.0
+max_hold_days = 20
+
+# 当日終値でsignalを判定し、翌営業日終値で建てる。
+# zero crossも当日終値で確認後、翌営業日終値で決済する。
+entry_delay_days = 1
+
+# 2021+を見る前に事前固定するコスト条件。
+# baselineを主判定、stressを耐性確認に使う。
+primary_cost_scenario = "baseline"
+cost_scenarios = [
+    { name = "baseline", transaction_cost_bps_per_turnover = 10.0, short_borrow_bps_per_day = 0.5 },
+    { name = "stress", transaction_cost_bps_per_turnover = 20.0, short_borrow_bps_per_day = 1.0 },
+]
+
+# 本命2組は中部電力を共有するため、Pairごとに資金枠を固定する。
+# どちらかを過去成績で優先せず、50%ずつ独立したsleeveとして扱う。
+# 両方同時なら合計100%、片方だけなら残り50%は現金。
+# 最終OOSの主判定は、これまでと同じ価格リターン。
+# CSVに配当・調整後終値が無いため、配当は含めない。
+return_basis = "split_adjusted_close_price_only_no_dividends"
+
+portfolio_mode = "fixed_pair_sleeves"
+pair_allocations = [
+    { symbol_a = "9502_中部電力", symbol_b = "9503_関西電力", capital_fraction = 0.5 },
+    { symbol_a = "9502_中部電力", symbol_b = "9508_九州電力", capital_fraction = 0.5 },
+]
+
+# OIL_USD <- GOLD_USD × OIL down の固定Regime戦略研究。
+# 2021年以降を開ける前に、2001-2020だけで
+# 「元戦略」と「downだけ」を実トレード単位で再確認する。
+[regime_strategy_research]
+periods = [
+    [2001, 2005],
+    [2006, 2010],
+    [2011, 2015],
+    [2016, 2020],
+]
+
+target = "OIL_USD"
+ref = "GOLD_USD"
+
+# ranking_period = 2001-2015 だけで選ばれた代表戦略を固定。
+signal_type = "sma"
+counter_trade = false
+use_excess_return = false
+threshold_width = 1.0
+hold_days = 20
+start_days = 1
+sma_period = 200
+
+# Target自身の前営業日までの情報だけで判定。
+direction_sma_window = 200
+filter_direction = "down"
+
+# OIL_USD <- GOLD_USD × OIL down の最終OOS。
+# 2001-2020の結果を確認した後、2021-2025を見る前に条件を固定。
+[regime_strategy_final_oos]
+period = [2021, 2025]
+
+target = "OIL_USD"
+ref = "GOLD_USD"
+
+signal_type = "sma"
+counter_trade = false
+use_excess_return = false
+threshold_width = 1.0
+hold_days = 20
+start_days = 1
+sma_period = 200
+
+direction_sma_window = 200
+filter_direction = "down"
+
+# baselineは既存OIL cost=0.03をそのまま使用。
+# stressはそのbaseline損益からさらに0.5%/tradeを引く。
+stress_extra_cost_pct = 0.5
+
+# 最終OOSを見る前に固定する判定条件。
+min_closed_trades = 15
+min_baseline_average_pct = 0.0
+min_baseline_median_pct = 0.0
+min_baseline_win_rate = 50.0
+require_down_better_than_up = true
+
+# AUD_JPY <- EUR_GBP × AUD_JPY up の固定Regime戦略研究。
+# 2021年以降を開ける前に、2001-2020だけで
+# 「元戦略」と「upだけ」を実トレード単位で再確認する。
+[aud_jpy_regime_strategy_research]
+periods = [
+    [2001, 2005],
+    [2006, 2010],
+    [2011, 2015],
+    [2016, 2020],
+]
+
+target = "AUD_JPY"
+ref = "EUR_GBP"
+
+# ranking_period = 2001-2015 だけで選ばれた代表戦略を固定。
+signal_type = "sma"
+counter_trade = false
+use_excess_return = false
+threshold_width = 1.0
+hold_days = 20
+start_days = 1
+sma_period = 15
+
+# Target自身の前営業日までの情報だけで判定。
+direction_sma_window = 200
+filter_direction = "up"
+
+# AUD_JPY <- EUR_GBP × AUD_JPY up の最終OOS。
+# 2001-2020の結果を確認した後、2021-2025を見る前に条件を固定。
+[aud_jpy_regime_strategy_final_oos]
+period = [2021, 2025]
+
+target = "AUD_JPY"
+ref = "EUR_GBP"
+
+signal_type = "sma"
+counter_trade = false
+use_excess_return = false
+threshold_width = 1.0
+hold_days = 20
+start_days = 1
+sma_period = 15
+
+direction_sma_window = 200
+filter_direction = "up"
+
+# configured_baseline:
+#   既存backtestのAUD_JPY cost=0.005 / swap=+0.00891%/dayをそのまま使う。
+#
+# neutral_carry:
+#   configured_baselineから固定swap寄与だけを除く。
+#
+# stress:
+#   neutral_carryからさらに0.5%/tradeを引く。
+stress_extra_cost_pct = 0.5
+
+# 最終OOSを見る前に固定する判定条件。
+min_closed_trades = 15
+min_configured_average_pct = 0.0
+min_neutral_average_pct = 0.0
+min_neutral_median_pct = 0.0
+min_neutral_win_rate = 50.0
+require_up_better_than_down = true
+
+# OIL_USD <- COPPER_USD の予測型戦略を、
+# 2001-2015だけで再選抜し、2016-2020へ固定適用する。
+# 2021年以降はこのStepでは計算対象に入れない。
+[oil_copper_strategy_research]
+selection_period = [2001, 2015]
+evaluation_period = [2016, 2020]
+
+target = "OIL_USD"
+ref = "COPPER_USD"
+
+# 既存の探索空間をそのまま利用する。
+selection_metric = "t_value"
+use_excess_return = false
+
+# OIL_USD <- COPPER_USD の最終OOS。
+# 2001-2015だけで選抜し、2016-2020で固定戦略を確認した後、
+# 2021-2025を見る前に条件を固定。
+[oil_copper_strategy_final_oos]
+period = [2021, 2025]
+
+target = "OIL_USD"
+ref = "COPPER_USD"
+
+signal_type = "sma"
+counter_trade = false
+use_excess_return = false
+threshold_width = 1.0
+hold_days = 20
+start_days = 1
+sma_period = 100
+
+# baselineは既存OIL cost=0.03をそのまま使用。
+# stressはbaseline損益からさらに0.5%/tradeを引く。
+stress_extra_cost_pct = 0.5
+
+# 最終OOSを見る前に固定する判定条件。
+min_closed_trades = 30
+min_baseline_average_pct = 0.0
+min_baseline_median_pct = 0.0
+min_baseline_win_rate = 50.0
+
+# COPPER_USD / OIL_USD 2.5σ大乖離Pairの実売買化 Step 1。
+# 2021-2025のPair損益を見る前に、2016-2020だけで固定ルールを確認する。
+[copper_oil_pair_strategy_research]
+period = [2016, 2020]
+hedge_fit_period = [2001, 2015]
+
+pairs = [
+    ["COPPER_USD", "OIL_USD"],
+]
+
+z_lookback = 60
+entry_z = 2.5
+max_hold_days = 20
+entry_delay_days = 1
+
+primary_cost_scenario = "baseline"
+portfolio_mode = "fixed_pair_sleeves"
+return_basis = "close_price_only"
+
+cost_scenarios = [
+    { name = "baseline", transaction_cost_bps_per_turnover = 10.0, short_borrow_bps_per_day = 0.5 },
+    { name = "stress", transaction_cost_bps_per_turnover = 20.0, short_borrow_bps_per_day = 1.0 },
+]
+
+pair_allocations = [
+    { symbol_a = "COPPER_USD", symbol_b = "OIL_USD", capital_fraction = 1.0 },
+]
+
+# COPPER_USD / OIL_USD 2.5σ大乖離Pair strategy-specific FINAL OOS。
+# 市場データ自体は別研究で既知だが、このPair戦略の2021-2025損益は未評価。
+[copper_oil_pair_final_oos]
+period = [2021, 2025]
+hedge_fit_period = [2001, 2015]
+
+pairs = [
+    ["COPPER_USD", "OIL_USD"],
+]
+
+z_lookback = 60
+entry_z = 2.5
+max_hold_days = 20
+entry_delay_days = 1
+
+primary_cost_scenario = "baseline"
+portfolio_mode = "fixed_pair_sleeves"
+return_basis = "close_price_only"
+
+cost_scenarios = [
+    { name = "baseline", transaction_cost_bps_per_turnover = 10.0, short_borrow_bps_per_day = 0.5 },
+    { name = "stress", transaction_cost_bps_per_turnover = 20.0, short_borrow_bps_per_day = 1.0 },
+]
+
+pair_allocations = [
+    { symbol_a = "COPPER_USD", symbol_b = "OIL_USD", capital_fraction = 1.0 },
+]
+
+# 2016-2020 developmentは12 trades。
+# 希少イベント戦略なので8 trades未満は判定保留とする。
+min_closed_trades = 8
+min_baseline_average_pct = 0.0
+min_baseline_median_pct = 0.0
+min_baseline_win_rate = 50.0
+min_stress_average_pct = 0.0
+min_baseline_terminal_return_pct = 0.0
+min_stress_terminal_return_pct = 0.0
+
+# OIL_USD <- SILVER_USD × OIL down の固定Regime戦略研究。
+# 2021年以降のこの戦略のRegime損益は開けず、
+# 2001-2020だけで実トレード単位の再現を確認する。
+[oil_silver_regime_strategy_research]
+periods = [
+    [2001, 2005],
+    [2006, 2010],
+    [2011, 2015],
+    [2016, 2020],
+]
+
+target = "OIL_USD"
+ref = "SILVER_USD"
+
+# 2001-2015だけで選ばれた代表StrategyTaskを固定。
+signal_type = "change"
+counter_trade = false
+use_excess_return = false
+threshold_width = 1.0
+hold_days = 20
+start_days = 1
+sma_period = 100
+
+# entry日の前営業日までのOIL価格だけで方向を判定。
+direction_sma_window = 200
+filter_direction = "down"
+
+# OIL_USD <- SILVER_USD × OIL down の最終OOS。
+# 2001-2020の実トレード再確認後、2021-2025を見る前に固定。
+[oil_silver_regime_strategy_final_oos]
+period = [2021, 2025]
+
+target = "OIL_USD"
+ref = "SILVER_USD"
+
+signal_type = "change"
+counter_trade = false
+use_excess_return = false
+threshold_width = 1.0
+hold_days = 20
+start_days = 1
+sma_period = 100
+
+direction_sma_window = 200
+filter_direction = "down"
+
+# baselineは既存OIL cost=0.03をそのまま使用。
+# stressはbaselineからさらに0.5%/tradeを引く。
+stress_extra_cost_pct = 0.5
+
+# 最終OOSを見る前に固定する判定条件。
+min_closed_trades = 15
+min_baseline_average_pct = 0.0
+min_baseline_median_pct = 0.0
+min_baseline_win_rate = 50.0
+require_down_better_than_up = true
+
+# EUR_GBPを共通Refとする複数FXへの先行情報テーマ。
+# Targetは過去にテーマとして記録済みの5本を固定し、
+# 2021年以降を使わず2001-2020だけで横断性を再確認する。
+[eur_gbp_fx_theme_research]
+periods = [
+    [2001, 2005],
+    [2006, 2010],
+    [2011, 2015],
+    [2016, 2020],
+]
+
+ref = "EUR_GBP"
+
+targets = [
+    "GBP_USD",
+    "AUD_USD",
+    "AUD_JPY",
+    "NZD_USD",
+    "EUR_USD",
+]
+
+# AUD_NZDを共通Refとするクロス円source-theme。
+# 事前記録済み4 Targetを固定し、2021年以降を使わず
+# 2001-2020だけで横断性を再確認する。
+[aud_nzd_jpy_theme_research]
+periods = [
+    [2001, 2005],
+    [2006, 2010],
+    [2011, 2015],
+    [2016, 2020],
+]
+
+ref = "AUD_NZD"
+
+targets = [
+    "EUR_JPY",
+    "CAD_JPY",
+    "CHF_JPY",
+    "GBP_JPY",
+]
