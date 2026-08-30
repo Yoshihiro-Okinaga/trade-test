@@ -429,151 +429,90 @@ regime_comparison.csv
 # 9. 現在の研究段階
 
 ```text
-Strategy Screening
-    候補探索済み
+新規候補探索
+    一旦停止
 
-Walk-forward
-    基盤完成
+final OOS監査対象
+    6
 
-Pair Research
-    Discovery
-    ↓
-    development
-    ↓
-    売買ルール固定
-    ↓
-    2021–2025 final OOS
-    ↓
-    不合格
-    ↓
-    現研究は終了
+deployable
+    0
 
-Regime Research
-    20ペアへ拡張済み
-    ↓
-    4期間比較済み
-    ↓
-    OIL_USD ← GOLD_USD × OIL down を固定
-    ↓
-    2021–2025 final OOS
-    ↓
-    WEAK_PASS
+final baseline平均プラス
+    4 / 6
+
+final stress平均プラス
+    1 / 6
+
+Regime優位方向維持
+    1 / 3
 ```
 
-`OIL_USD ← GOLD_USD × OIL down` は、
-**Regime現象としては再現したが、売買戦略としては弱い**
-という結論です。
+developmentからfinalへのedge縮小が大きいため、
+現在は銘柄候補を追加で開けず、
+**研究方法そのものを監査する段階**へ移行。
 
-2021–2025:
+記述統計では、
+development平均に対するfinal平均の残存率中央値は
+約 **9.0%**。
+
+ただしstudy familyが混在し監査数も少ないため、
+この数字から新しい万能スコアを最適化しない。
+
+監査出力:
 
 ```text
-OIL down
-    closed trades       36
-    baseline average    +0.029%
-    baseline median     +0.324%
-    baseline win rate   52.8%
-    baseline t          +0.027
-    stress average      -0.471%
-
-OIL up
-    baseline average    -0.541%
-
-down - up
-    average difference  +0.571%
+research_method_audit_candidates.csv
+research_method_audit_summary.csv
+RESEARCH_METHOD_AUDIT.md
 ```
-
-つまり、
-
-```text
-Regime仮説
-    down > up
-    → final OOSでも再現
-
-絶対edge
-    baselineはほぼゼロ
-    stressではマイナス
-    → 実用戦略としては見送り
-```
-
-と正式に扱います。
-
-2021–2025を見た後で、
-
-```text
-200日SMA → 150日
-20日hold → 10日
-shortを除外
-threshold 1.0 → 1.2
-```
-
-などへ変更して、同じ期間をfinal OOSとしてやり直しません。
 
 ---
 
 # 10. 次にやること
 
-現在の最優先仮説は、
+次は新しい銘柄候補を開けません。
+
+最優先:
 
 ```text
-AUD_JPY ← EUR_GBP
-+
-AUD_JPY が長期up regime
+Parameter Plateau Research
 ```
 
-です。
+仮説:
 
-固定Regime定義:
+> best t-valueの1点の高さより、
+> 周辺パラメータも広く強い候補の方が
+> OOSで残りやすい。
 
-```text
-AUD_JPY up
-    前営業日のAUD_JPY終値
-    >=
-    前営業日のAUD_JPY 200日SMA
-```
-
-この仮説はこれまでの4区間で、
+まずfinal OOSを学習材料にせず、
 
 ```text
-2001–2005
-2006–2010
-2011–2015
+2001–2015
+    plateau測定
+
 2016–2020
+    development検証
 ```
 
-すべて `up > down` でした。
+だけを使う。
 
-2001–2015で固定された代表戦略は、
+最初に見る指標:
 
 ```text
-signal          sma
-threshold       1
-sma_period      15
-counter_trade   false
-use_excess_return false
-hold_days       20
-start_days      1
+best_t
+neighbor_mean_t
+neighbor_worst_t
+neighbor_positive_ratio
+signal_type_support
+positive_year_ratio
 ```
 
-です。
+複雑な複合スコアはまだ作らない。
+各指標を単独で2016–2020と比較する。
 
-次はPair・OIL←GOLDと同じ手順で、
-
-```text
-既存戦略を固定
-↓
-2001–2020で実トレード単位のRegime差を再確認
-↓
-合否基準・コスト耐性を固定
-↓
-2021–2025 final OOSを一度だけ
-```
-
-と進めます。
-
-`OIL_USD ← GOLD_USD × OIL down` は、
-final OOSでRegime差自体は残りましたが、
-実用的な絶対edgeが残らなかったため、
-現在の主力候補から外します。
+AUD_NZD → クロス円など未完了テーマは
+削除せず凍結する。
 
 ---
 
@@ -583,11 +522,21 @@ final OOSでRegime差自体は残りましたが、
 - Pairの失敗を条件追加で無理に救済する
 - OIL←GOLDの2021–2025を再び最終OOSとして最適化する
 - OIL←GOLDをshort除外やSMA変更で後付け救済する
+- AUD_JPY←EUR_GBPの2021–2025を再び最終OOSとして最適化する
+- AUD_JPYのup×shortなどを後付けで本命化する
+- OIL←COPPERをlongだけにして2021–2025を再評価する
+- OIL←COPPERの2023年以降を都合よく除外する
+- COPPER/OIL 2.5σ Pairをzero_crossだけにして再評価する
+- COPPER/OIL 2.5σ Pairを片方向だけにして再評価する
+- OIL←SILVERのup×longをfinal OOS後に本命化する
+- OIL←SILVERをdownからupへ変更して同じ2021–2025を再評価する
 - Regimeの20 / 252 / 200を今回の結果に合わせて変更する
 - RegimeをStrategy Screeningの総当たりパラメータへ追加する
 - 弱い元戦略をRegime miningで救済する
 - `max_open_positions` を大改造する
 - コスト未反映の研究値を実収益とみなす
+- final OOS数件だけから新しい万能スコアを最適化する
+- 未完了テーマを都合よく選別してfinal OOSを追加消費する
 
 ---
 
@@ -605,6 +554,9 @@ py -3.14 research\pair_strategy_research.py --config config.toml
 py -3.14 research\regime_research.py --config config.toml
 py -3.14 research\regime_strategy_research.py --config config.toml
 py -3.14 research\regime_strategy_final_oos.py --config config.toml
+py -3.14 research\aud_jpy_regime_strategy_research.py --config config.toml
+py -3.14 research\aud_jpy_regime_strategy_final_oos.py --config config.toml
+py -3.14 research\oil_silver_regime_strategy_research.py --config config.toml
 ```
 
 OIL←GOLD Regime final OOSの出力例:
@@ -660,6 +612,6 @@ RESEARCH_HYPOTHESES.md
 
 現在の再開地点は、
 
-> **Pairはfinal OOS不合格。OIL←GOLD × OIL down はRegime差のみ再現し、売買戦略としては見送り。次は `AUD_JPY ← EUR_GBP × AUD_JPY up` を同じ厳格な手順で検証する。**
+> **新規候補探索を一旦停止。final OOSまで到達した6仮説を監査し、deployableは0、stress後も平均プラスは1/6。次は2021–2025を学習に使わず、2001–2015と2016–2020だけでParameter Plateauを検証する。**
 
 です。

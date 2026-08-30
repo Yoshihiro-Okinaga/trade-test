@@ -1,0 +1,9 @@
+metric,value,interpretation
+finalized_hypothesis_count,6.000000000,final OOSまで到達した監査対象数
+strong_or_deployable_pass_count,0.000000000,現時点で本番投入可とした案は0
+final_baseline_average_positive_count,4.000000000,4/6はfinal平均自体はプラス
+final_stress_average_positive_count,1.000000000,1/6だけstress後も平均プラス
+median_development_to_final_retention_pct,9.046586804,異なる研究family混在の記述統計。新スコア学習には使わない
+regime_hypothesis_count,3.000000000,finalまで検証したRegime仮説数
+regime_relationship_survived_count,1.000000000,1/3だけ優位方向を維持
+regime_relationship_reversed_count,2.000000000,2/3は優位方向が逆転

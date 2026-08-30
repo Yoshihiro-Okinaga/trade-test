@@ -516,7 +516,7 @@ final OOSのやり直しとは扱わない。
 
 # 2. 非常に有力な仮説
 
-## A 4. EUR_GBP → AUD_JPY は、AUD_JPY上昇局面で強い
+## 旧A → 脱落 4. EUR_GBP → AUD_JPY × AUD_JPY up
 
 表記:
 
@@ -533,13 +533,16 @@ signal          sma
 threshold       1
 sma_period      15
 counter_trade   false
+use_excess_return false
+hold_days       20
+start_days      1
 
 IS trades       約 172
 IS average      約 +0.909%
 IS t            約 2.72
 ```
 
-2016–2020:
+2016–2020の元戦略:
 
 ```text
 trades          約 60
@@ -553,43 +556,121 @@ trades          約 60
 AUD_JPYが、
 
 ```text
-前営業日終値 >= 200日SMA
+前営業日終値 >= 前営業日200日SMA
 ```
 
-の **up regime** で強い。
+の **up regime** で強いという仮説。
 
-`down - up` 平均差:
+2001–2020の実トレード再確認では、
 
 ```text
-2001–2005   約 -0.75%
-2006–2010   約 -0.86%
-2011–2015   約 -1.15%
-2016–2020   約 -0.42%
+期間          up平均       down平均      up-down
+2001–2005    +0.115%      -0.630%      +0.746%
+2006–2010    +2.500%      +1.637%      +0.862%
+2011–2015    +1.220%      +0.075%      +1.146%
+2016–2020    +0.766%      +0.342%      +0.424%
 ```
-
-すべてマイナス。
-
-つまり、
 
 **4/4期間で up > down。**
 
-### 現在の評価
-
-**現在の最優先Regime仮説。**
-
-OIL←GOLD × down はfinal OOSでRegime差こそ再現したが、
-絶対edgeはほぼ消え、stressではマイナスだった。
-
-そのため次はこのAUD_JPY仮説を、
-同じ厳格な手順で検証する。
-
-固定フィルタ候補:
+2001–2020のup限定:
 
 ```text
-EUR_GBP → AUD_JPY
-+
-AUD_JPYが200日SMAより上
+trades       113
+平均         +1.048%
+中央値       +0.971%
+勝率         61.9%
+t            3.28
+陽性年       16 / 20年
 ```
+
+固定swapを除いてもup優位は維持されたため、
+swap設定の副産物ではないと判断してfinal OOSへ進んだ。
+
+### 2021–2025 FINAL OOS
+
+事前固定条件:
+
+```text
+strategy
+    sma / threshold=1
+    sma_period=15
+    counter_trade=false
+    hold=20
+    start=1
+    long / short両方
+
+regime
+    AUD_JPY前営業日終値
+    >=
+    AUD_JPY前営業日200日SMA
+
+configured baseline
+    cost=0.005
+    swap=+0.00891%/day
+
+neutral carry
+    configuredから固定swap寄与を除外
+
+stress
+    neutral carry - 0.5% / trade
+```
+
+program verdict:
+
+```text
+WEAK_PASS
+```
+
+ただし研究仮説として重要な `up > down` は失敗。
+
+```text
+AUD_JPY up
+    trades             18
+    neutral average    +0.134%
+    neutral median     -0.287%
+    neutral win rate   50.0%
+    neutral t          +0.212
+    stress average     -0.366%
+
+AUD_JPY down
+    trades             16
+    neutral average    +0.750%
+
+up - down
+    average difference -0.616%
+```
+
+developmentで4/4期間続いたRegime差が、
+final OOSで**逆転**した。
+
+### 現在の正式評価
+
+```text
+Regime hypothesis
+    FAIL
+
+Trading strategy
+    weak
+    stressでマイナス
+
+総合
+    脱落
+```
+
+`up × short` はfinal OOS内では相対的に良かったが、
+それは結果を見た後の情報なので採用しない。
+
+同じ2021–2025を使って、
+
+```text
+up × shortだけ
+SMA変更
+hold変更
+threshold変更
+```
+
+などへ変更してfinal OOSをやり直さない。
 
 ---
 
@@ -677,23 +758,23 @@ Refごとにメカニズムが違う可能性が高い。
 
 ---
 
-## B+ 7. COPPER / OIL の2.5σ級大乖離後の短中期回帰
+## 旧B+ → B 7. COPPER / OIL の2.5σ級大乖離後の短中期回帰
 
-これは上の「COPPER → OIL予測」とは別研究。
+これは `OIL_USD ← COPPER_USD` の予測型とは別研究。
 
 ### Pair仮説
 
 > COPPERとOILの相対価格が通常より極端に離れたときだけ、
 > 20日前後でspread contractionが起きる可能性がある。
 
-2001–2015:
+2001–2015 discovery:
 
 ```text
 2.5σ → 20日edge     約 +3.564%
 中央値              約 +4.065%
 ```
 
-2016–2020 fixed hedge:
+2016–2020 fixed hedgeの研究用edge:
 
 ```text
 イベント数          12
@@ -702,25 +783,116 @@ Refごとにメカニズムが違う可能性が高い。
 プラス率            約 58.3%
 ```
 
-### 注意
+この `+5.219%` は固定20日後のspread contractionであり、
+実際の売買P&Lそのものではない。
 
-- イベント数が少ない
-- 40日では悪化
-- 強い長期cointegrationではない
+### 2016–2020 実売買化
 
-したがって、
+固定条件:
 
-> 長期均衡へ戻るPair
+```text
+hedge       2001–2015固定
+z lookback  60
+entry       2.5σ、翌営業日終値
+exit        zero cross翌日 / 最大20営業日
+baseline    10bps/turnover + short 0.5bps/day
+stress      20bps/turnover + short 1.0bps/day
+```
 
-ではなく、
+結果:
 
-> **極端な乖離後だけ起きる20日前後の反応**
+```text
+trades              12
+gross average       +2.048%
+baseline average    +1.808%
+stress average      +1.568%
+baseline win rate   75.0%
+```
 
-という別仮説。
+実売買化してもedgeが残ったため、
+2021–2025 strategy-specific final OOSへ進んだ。
+
+### 2021–2025 strategy-specific FINAL OOS
+
+市場データ自体は別研究ですでに既知。
+ただし、この2.5σ Pair戦略の損益としては未評価だった期間。
+
+```text
+program verdict
+    WEAK_PASS
+
+trades
+    15
+
+baseline
+    average     +0.717%
+    median      -0.798%
+    win rate    46.7%
+    t           +0.509
+    terminal    +9.068%
+
+stress
+    average     +0.471%
+    terminal    +5.126%
+```
+
+事前固定条件7項目のうち、
+
+```text
+baseline median > 0
+baseline win rate >= 50%
+```
+
+だけ失敗。
+
+一方、
+
+```text
+baseline平均
+stress平均
+baseline terminal
+stress terminal
+```
+
+はすべてプラスだった。
+
+年別baseline平均も5年中4年プラス。
+
+ただしexit別:
+
+```text
+zero_cross
+    2 trades
+    average +7.694%
+
+max_hold
+    13 trades
+    average -0.356%
+```
+
+で、少数の大勝ちへの依存が強い。
+
+### 現在の正式評価
+
+```text
+研究評価
+    B
+
+実用
+    見送り
+
+状態
+    edgeは完全には消えていない
+    研究候補として残す
+```
+
+同じ2021–2025を使って、
+zero-crossだけ・片方向だけ・entry_z変更・max_hold変更などの
+救済最適化はしない。
 
 ---
 
-## B+ 8. SILVER → OIL はOIL下降局面で強い可能性
+## 旧B+ → 脱落 8. SILVER → OIL × OIL down
 
 表記:
 
@@ -728,28 +900,88 @@ Refごとにメカニズムが違う可能性が高い。
 OIL_USD ← SILVER_USD
 ```
 
-2016–2020の予測戦略はプラス。
-
-さらに平均では、
+固定代表戦略:
 
 ```text
-down > up
+signal          change
+counter_trade   false
+use_excess      false
+threshold       1.0
+hold_days       20
+start_days      1
+sma_period      100
+```
+
+2001–2020 developmentでは、
+
+```text
+2001–2005    down > up
+2006–2010    down > up
+2011–2015    down > up
+2016–2020    down > up
 ```
 
 が4/4期間で成立。
 
-ただし、
+down全体:
 
-- 元戦略の強さ
-- 中央値の一貫性
+```text
+trades      116
+average     +2.769%
+median      +2.841%
+win rate    62.9%
+t           2.42
+```
 
-はOIL←GOLDより弱い。
+### 2021–2025 FINAL OOS
 
-### 評価
+```text
+program verdict
+    FAIL
 
-B+
+down
+    trades      45
+    average     -0.902%
+    median      -0.446%
+    win rate    44.4%
+    t           -1.043
+    stress avg  -1.402%
 
-OIL←GOLDの「別Refでの部分的再現」として興味深い。
+up
+    trades      33
+    average     +0.769%
+
+down - up
+    -1.670 pt
+```
+
+事前条件では取引数だけPASSし、
+平均・中央値・勝率・stress・`down > up` はすべてFAIL。
+
+### 結論
+
+```text
+Regime hypothesis
+    FAIL
+
+Trading strategy
+    FAIL
+
+総合
+    脱落
+```
+
+final OOSで良かった `up × long` などを
+同じ2021–2025で救済仮説へ変更しない。
+
+また、
+
+> OIL downなら他コモディティRefも一般的に強い
+
+という一般則も支持が弱くなった。
+
+OIL←GOLDでは相対的なdown優位だけ残ったが、
+OIL←SILVERではRegime差そのものが逆転したため。
 
 ---
 
@@ -785,37 +1017,70 @@ GOLD/COPPERより優先度は下。
 
 # 4. EUR_GBPを情報源とする仮説
 
-## B+ 10. EUR_GBPは複数FXへ先行情報を持つ可能性
+## 旧B+ → B 10. EUR_GBPは複数FXへ先行情報を持つ可能性
 
-過去のStrategy Screeningでは、
-
-```text
-GBP_USD ← EUR_GBP
-AUD_USD ← EUR_GBP
-AUD_JPY ← EUR_GBP
-NZD_USD ← EUR_GBP
-EUR_USD ← EUR_GBP
-```
-
-などが何度も候補になった。
-
-特に2001–2015では、
+固定Target:
 
 ```text
-GBP_USD ← EUR_GBP   best t 約 3.11
-AUD_USD ← EUR_GBP   best t 約 3.08
-AUD_JPY ← EUR_GBP   best t 約 2.72
+GBP_USD
+AUD_USD
+AUD_JPY
+NZD_USD
+EUR_USD
 ```
 
-と強い。
+各代表StrategyTaskは2001–2015だけで選抜済み。
 
-### 現在の解釈
+### 4期間の横断性
 
-> EUR_GBPが複数FXに情報を持つ
+```text
+2001–2005    5/5平均プラス
+             等Target平均 +0.417%
 
-というテーマ自体は残る。
+2006–2010    5/5平均プラス
+             等Target平均 +1.204%
 
-ただしTargetごとに性質が違う。
+2011–2015    5/5平均プラス
+             等Target平均 +0.389%
+
+2016–2020    4/5平均プラス
+             等Target平均 +0.136%
+```
+
+2016–2020:
+
+```text
+GBP_USD    +0.054%
+AUD_USD    +0.204%
+AUD_JPY    +0.498%
+NZD_USD    -0.186%
+EUR_USD    +0.108%
+```
+
+### 解釈
+
+> EUR_GBPが複数FXへ横断情報を持つ
+
+というテーマはdevelopmentでも完全には消えなかった。
+
+ただし、
+
+- 2016–2020の等Target平均は+0.136%まで弱化
+- 5本中1本はマイナス
+- GBP/AUD/NZD/EURの4 USDストレートは同じDI signal日程
+- Target自体も相関するため、4つの独立edgeとは数えられない
+
+### 現在の評価
+
+```text
+B
+横断性は弱く残る
+実用候補ではない
+2021–2025確認を急がず保留
+```
+
+AUD_NZD source themeと同じ方法で比較してから
+次の優先順位を決める。
 
 ---
 
@@ -1572,198 +1837,196 @@ stress terminal return     -8.480%
 
 ---
 
+# 13.5 OIL_USD ← COPPER_USD final OOS
+
+## 旧B+ → B- 予測型 OIL_USD ← COPPER_USD
+
+2001–2015だけで選抜した代表戦略:
+
+```text
+signal          sma
+threshold       1.0
+sma_period      100
+counter_trade   false
+use_excess      false
+hold_days       20
+start_days      1
+```
+
+2001–2015:
+
+```text
+trades       206
+average      +1.836%
+median       +0.760%
+win rate     53.4%
+t            2.81
+```
+
+2016–2020 fixed development:
+
+```text
+trades       77
+average      +1.016%
+median       +3.691%
+win rate     58.4%
+```
+
+方向別にはlongが強くshortが弱かったが、
+final OOS前にlongだけへ変更せず**両方向のまま固定**した。
+
+### 2021–2025 FINAL OOS
+
+```text
+program verdict
+    WEAK_PASS
+
+all
+    trades       77
+    average      +0.225%
+    median       +0.115%
+    win rate     50.6%
+    t            +0.261
+    stress avg   -0.275%
+
+long
+    trades       43
+    average      +0.582%
+
+short
+    trades       34
+    average      -0.226%
+```
+
+年別:
+
+```text
+2021    baseline +1.131%    stress +0.631%
+2022    baseline +1.573%    stress +1.073%
+2023    baseline -0.838%    stress -1.338%
+2024    baseline -0.213%    stress -0.713%
+2025    baseline -0.488%    stress -0.988%
+```
+
+### 現在の正式評価
+
+```text
+edge
+    わずかに残った
+
+robustness
+    stressでマイナス
+    2023–2025は3年連続で平均マイナス
+
+総合
+    B-
+    実用戦略としては見送り
+```
+
+2021–2025を見た後でlongだけ、SMA変更、threshold変更、
+hold変更、期間除外などを行い、同じ期間をfinal OOSとしてやり直さない。
+
+---
+
 # 14. 現時点の総合研究順位
 
-PairとOIL←GOLDのfinal OOSを反映した**現在順位**。
+現在は新規候補の順位付けを一旦停止する。
 
-## A / 最優先
+```text
+final OOS監査対象          6
+deployable                 0
+final baseline平均プラス  4/6
+final stress平均プラス    1/6
+Regime優位方向維持        1/3
+```
 
-1. **AUD_JPY ← EUR_GBP × AUD_JPY up**
+主な失敗型:
 
-## B+
+1. edge compression
+   - OIL←COPPER
 
-2. **OIL_USD ← GOLD_USD × high_vol**
-3. **OIL_USD ← COPPER_USD**
-4. **COPPER_USD / OIL_USD の2.5σ大乖離**
-5. **OIL_USD ← SILVER_USD × OIL down**
-6. **EUR_GBP → 複数FXという情報源テーマ**
-7. **AUD_NZD → クロス円という情報源テーマ**
+2. absolute edge collapse
+   - OIL←GOLD × down
 
-## B
+3. regime inversion
+   - AUD_JPY←EUR_GBP × up
+   - OIL←SILVER × down
 
-8. **EUR_JPY ← AUD_NZD × EUR_JPY down**
-9. **GBP_JPY ← AUD_NZD**
-10. **GBP_USD ← EUR_GBP**
-11. **AUD_USD ← EUR_GBP**
-12. **GOLD_USD ← EUR_GBP**
-13. **OIL_USD ← NZD_USD**
+4. portfolio / cost fragility
+   - utility 50/50 Pair
 
-## B- / 現象は残ったが主力見送り
+5. rare-event dependence
+   - COPPER/OIL 2.5σ Pair
 
-- **OIL_USD ← GOLD_USD × OIL down**
-  - 2021–2025で `down > up` は再現
-  - down baseline平均 +0.029%
-  - stress平均 -0.471%
-  - Regime現象は合格、売買戦略としては見送り
+残すもの:
 
-## B- / 追加検証
+```text
+COPPER/OIL 2.5σ Pair
+    B / paper-forward候補
 
-14. **CHF_JPY ← AUD_NZD**
-15. **EUR_USD ← EUR_GBP**
-16. **GBP_JPY ← USSPX500_Futures**
-17. **NQ100_Futures ← USD_CHF**
-18. **GBP_JPY ← GBP_CHF**
-19. **UK100_Futures ← SILVER_USD**
-20. **US30_Futures ← SILVER_USD**
-21. **AUD_JPY ← GBP_CHF**
-22. **USD_JPY ← USSPX500_Futures**
+EUR_GBP → 複数FX
+    B / development-only / 保留
 
-## B-/C / 観察
+AUD_NZD → クロス円
+    未完了 / 凍結
+```
 
-- **中部電力 / 関西電力**
-  - final OOS baselineは弱くプラス
-  - stressではマイナス
-  - 主力候補から降格
-
-## C / 優先度低
-
-- CAD_JPY ← AUD_NZD
-- NZD_USD ← EUR_GBP
-- GBP_JPY ← UK100_Futures
-- VIX → NQ100
-- VIX → SPX500
-- TRY_JPY系
-
-## 脱落
-
-- **中部電力 / 九州電力**
-  - 2021–2025 final OOSでgrossからマイナス
-- **中部/関西 + 中部/九州 50/50 Pair Portfolio**
-  - baseline terminal return -3.811%
+ここからは
+「どの候補が一番良いか」より
+「どう選べばOOSで残りやすいか」を優先する。
 
 ---
 
 # 15. 次に検証する順番
 
-## 最優先
+## 最優先: Parameter Plateau Research
+
+仮説:
+
+> best t-value 1点の高さより、
+> 近傍パラメータの広い安定性の方が
+> developmentで残りやすい。
+
+検証期間:
 
 ```text
-AUD_JPY ← EUR_GBP
-+
-AUD_JPY up
-```
+2001–2015
+    selection / plateau測定
 
-固定Regime定義:
-
-```text
-前営業日のAUD_JPY終値
->=
-前営業日のAUD_JPY 200日SMA
-```
-
-2001–2015で固定された代表戦略:
-
-```text
-signal          sma
-threshold       1
-sma_period      15
-counter_trade   false
-use_excess_return false
-hold_days       20
-start_days      1
-```
-
-この仮説は、
-
-```text
-2001–2005
-2006–2010
-2011–2015
 2016–2020
+    development
+
+2021–2025
+    新しいplateau指標の学習に使わない
 ```
 
-の4期間すべてで `up > down` が確認されている。
-
-次にやること:
+候補指標:
 
 ```text
-既存戦略を固定
-↓
-2001–2020で実トレード単位のRegime差を再確認
-↓
-合否基準・コスト耐性を2021+を見る前に固定
-↓
-2021–2025 FINAL OOSを一度だけ
+best_t
+neighbor_mean_t
+neighbor_worst_t
+neighbor_positive_ratio
+signal_type_support
+positive_year_ratio
 ```
 
-変更しないもの:
-
-```text
-direction SMA     200日
-signal SMA        15日
-threshold         1
-hold              20営業日
-start             1営業日
-counter_trade     false
-```
+まず単独指標として観察する。
+final OOS数件に合わせた複雑な複合スコアは作らない。
 
 ---
 
-## OIL_USD ← GOLD_USD × OIL down
-
-2021–2025 final OOSまで完了。
+## 未完了テーマ
 
 ```text
-verdict
-    WEAK_PASS
-
-Regime
-    down > up は再現
-
-絶対edge
-    down baseline平均 +0.029%
-    down stress平均   -0.471%
+AUD_NZD → クロス円
+EUR_GBP → 複数FXの追加検証
 ```
 
-現在はB-。
+は凍結。
 
-同じ2021–2025を使って、
-
-```text
-SMA変更
-hold変更
-threshold変更
-short除外
-down強度フィルタ追加
-```
-
-などを行い、final OOSとしてやり直さない。
-
----
-
-## Pair Research
-
-中部/関西・中部/九州を使った現在のPair本命研究は終了。
-
-2021–2025はすでにfinal OOSとして開封済み。
-
-今後この期間を見て、
-
-```text
-entry threshold
-z lookback
-max hold
-片方向化
-Pair選択
-allocation
-```
-
-を変更した場合、
-それは**新しいdevelopment研究**として扱う。
-
-同じ2021–2025を再びfinal OOSとは呼ばない。
-
-2026年はPair final OOSで未使用。
+method auditが終わるまで
+追加のfinal OOSを消費しない。
 
 ---
 
@@ -1793,39 +2056,31 @@ allocation
 
 # 17. 新しいチャットで最初に理解すること
 
-1. 予測型とPair Researchは別現象。
-2. Regime Researchは予測型戦略の市場環境依存を見る研究。
-3. Pair 50/50 Portfolioは2021–2025 final OOSで正式に不合格。
-4. 中部/九州はPair候補から脱落。
-5. 中部/関西はweak positiveだがB-/Cへ降格。
-6. OIL←GOLD × OIL down は2021–2025 final OOSまで完了。
-7. OIL←GOLDは `down > up` のRegime差自体はfinal OOSでも再現。
-8. ただしdown baseline平均は+0.029%、stress平均は-0.471%。
-9. OIL←GOLD × down は現在B-で、実用戦略としては見送り。
-10. OIL←GOLDの2021–2025を条件変更してfinal OOSとしてやり直さない。
-11. **AUD_JPY←EUR_GBP × AUD_JPY up が現在の最優先仮説。**
-12. EUR_GBP系=low_volという一般化は棄却。
-13. AUD_NZD系=downという一般化も一律には採用しない。
-14. OIL Target戦略もRefごとにRegimeが異なる。
-15. COPPER/OILは予測型と2.5σPairの両方で面白いが別戦略。
-16. 弱い元戦略を後付けRegimeで救済しない。
-17. 研究結果を見た後の細かいパラメータ調整を避ける。
-18. 次にやるのはAUD_JPY←EUR_GBP × AUD_JPY upの実トレード再確認。
+1. 新規候補探索は一旦停止した。
+2. final OOSまで到達した監査対象は6仮説。
+3. 本番投入可と判断した案は0。
+4. final baseline平均プラスは4/6。
+5. final stress平均プラスは1/6。
+6. Regime仮説3本中、優位方向維持は1本。
+7. AUD_JPY×upとOIL←SILVER×downはfinalでRegime差が逆転。
+8. OIL←GOLD×downは相対差のみ残り絶対edgeは消えた。
+9. OIL←COPPERはdevelopmentからfinalへ大幅縮小しstressでマイナス。
+10. utility Pair portfolioはfinal FAIL。
+11. COPPER/OIL 2.5σ Pairだけstress後もプラスだがrare-event依存が強い。
+12. EUR_GBP source themeはB・保留。
+13. AUD_NZD source themeは未完了・凍結。
+14. 次はParameter Plateau Research。
+15. 2021–2025 final結果を新スコア最適化に使わない。
+16. 2001–2015でplateauを測り、2016–2020だけで検証する。
 
 ---
 
 # 18. 再開地点
 
-> **Pairはfinal OOS不合格。OIL←GOLD × OIL down はRegime差のみ再現し、売買戦略としては見送り。次は `AUD_JPY ← EUR_GBP × AUD_JPY up` を、既存の200日SMAレジーム定義を変えずに検証する。**
+> **新規候補探索を止め、研究方法の監査へ移行。次はbest t-value 1点ではなく、周辺パラメータの広い安定性（Parameter Plateau）が2016–2020で残りやすいかを調べる。**
 
-まず、
+まず2001–2015だけからplateau指標を計算し、
+2016–2020との関係を見る。
 
-```text
-2001–2020
-```
-
-だけを使って、
-既存の固定戦略について `up / down` の実トレード差を再確認する。
-
-その結果が既存Regime研究と一致すれば、
-2021–2025を開ける前に合否基準とコスト耐性を固定する。
+2021–2025 final OOSは
+新しいplateauスコアの学習には使わない。
