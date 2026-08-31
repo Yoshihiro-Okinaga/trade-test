@@ -1,4 +1,4 @@
-# Parameter Plateau Development 2016-2020
+# Parameter Plateau IS 2001-2015
 #
 # 通常のScreening / Walk-forward用。
 # Parameter Plateau研究は専用configを使う。
@@ -39,12 +39,12 @@ use_excess_return = [false]
 
 # 通常の出力では期間別集計も残す。
 period_years = []
-ranking_period = [2016, 2020]
+ranking_period = [2001, 2015]
 
 filter_signal_type = ""
 filter_max = 25.0
 trade_code_type = "all"
-min_trade_count = 5
+min_trade_count = 30
 use_process_pool = true
 output_task_time = false
 

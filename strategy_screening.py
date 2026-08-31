@@ -1,3 +1,4 @@
+import argparse
 import sys
 import os
 import datetime
@@ -160,6 +161,36 @@ def main(config_path=None, data_folder=None, save_dir=None):
 
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Strategy Screening を実行する。",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="config.toml のパス。未指定ならプロジェクト直下。",
+    )
+    parser.add_argument(
+        "--data-folder",
+        type=Path,
+        default=None,
+        help="市場データフォルダ。",
+    )
+    parser.add_argument(
+        "--save-dir",
+        type=Path,
+        default=None,
+        help="CSV出力先。",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(
+        config_path=args.config,
+        data_folder=args.data_folder,
+        save_dir=args.save_dir,
+    )
 
