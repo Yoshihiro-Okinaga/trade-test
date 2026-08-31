@@ -1,3 +1,4 @@
+import argparse
 """
 walk-forward 検証
 
@@ -1010,5 +1011,48 @@ def run(
     print(f"総実行時間: {duration}")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Walk-forward 検証を実行する。",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="config.toml のパス。未指定ならプロジェクト直下。",
+    )
+    parser.add_argument(
+        "--data-folder",
+        type=Path,
+        default=None,
+        help="市場データフォルダ。",
+    )
+    parser.add_argument(
+        "--save-dir",
+        type=Path,
+        default=None,
+        help="CSV出力先。",
+    )
+    parser.add_argument(
+        "--select-metric",
+        default=None,
+        help="configのselect_metricを一時的に上書きする。",
+    )
+    parser.add_argument(
+        "--recent-closed",
+        type=int,
+        default=5,
+        help="live表示に残す直近決済数。",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    run()
+    args = parse_args()
+    run(
+        recent_closed=args.recent_closed,
+        config_path=args.config,
+        data_folder=args.data_folder,
+        save_dir=args.save_dir,
+        select_metric=args.select_metric,
+    )
