@@ -12,9 +12,11 @@
 ```text
 本番投入可能     なし
 研究             再開済み
-現在の研究       Signal Lifetime / Hold Response / Signal Consensus
-使用期間         2001–2015 ISのみ
-次               AUD_USD <- GBP_CHF の固定6 Task Development
+現在の研究       Signal Consensus候補の固定パネル検証
+Discovery        2001–2015 IS
+Development      2016–2020
+Final OOS        2021–2025（AUD_USD <- GBP_CHFで消費済み）
+次               US30_Futures <- EUR_NZD の固定4 Task Development
 ```
 
 final OOSまで進めた過去研究では、IS/developmentで見えたedgeがfinalで
@@ -226,9 +228,9 @@ SMA       n=390  avg -0.011164%  t -0.758
 
 4/4マイナスで **REJECT**。hold / threshold / signal / directionの救済変更はしない。
 
-### Development候補2 — AUD_USD <- GBP_CHF
+### Development候補2 — AUD_USD <- GBP_CHF — PASS / Final OOSへ
 
-2001–2015 ISだけを見た状態で、次の6 Taskを固定する。全てcounter、共有symbolなし。
+2001–2015 ISだけを見た状態で、次の6 Taskを固定した。全てcounter、共有symbolなし。
 
 ```text
 signal   class  threshold  hold  start  sma   IS avg       IS t
@@ -240,7 +242,7 @@ Stoch    State  30.0       1     1      15    +0.049594%  2.387052
 Streak   Event  2.5        5     1      10    +0.153743%  2.517038
 ```
 
-Development gateは前候補の結果を見て緩めず、4本時の3/4を一般化して固定する。
+Development gateは前候補の結果を見て緩めず、4本時の3/4を一般化して固定した。
 
 ```text
 全Taskを評価できる
@@ -251,10 +253,84 @@ panel average_pct > 0
 t_valueはgateに使わない
 ```
 
-N=6なので必要positive数は5/6。EventはStreak 1本だけなのでStreak positiveも必須。
-Developmentではentry/exit両方が2016–2020内に完結したトレードだけを使う。
+2016–2020 Development結果（entry/exit両方が期間内のトレードのみ）:
 
-結果を見た後に勝ったsignalだけを残す、hold / threshold / SMA / directionを変えることはしない。
+```text
+Streak   +0.137695%
+BB       -0.008313%
+Change   +0.031179%
+RSI      +0.035777%
+SMA      +0.039140%
+Stoch    +0.016881%
+
+positive Task   5 / 6
+State positive  4 / 5
+Event positive  1 / 1
+panel average   +0.042060%
+```
+
+事前固定gateを全て満たし **Development PASS**。
+
+Final OOSは2021–2025。6 Taskと方向・threshold・hold・SMAは変更しない。
+Final gateもDevelopmentと同じ条件をそのまま使った。
+
+```text
+全Taskを評価できる
+positive Task数 >= 5 / 6
+Stateで少なくとも1本 positive
+Event（Streak）が positive
+panel average_pct > 0
+t_valueはgateに使わない
+```
+
+Final結果:
+
+```text
+Streak   +0.099003%
+BB       +0.013316%
+Change   -0.017608%
+RSI      +0.001760%
+SMA      +0.026463%
+Stoch    +0.023616%
+
+positive Task   5 / 6
+State positive  4 / 5
+Event positive  1 / 1
+panel average   +0.024425%
+```
+
+事前固定gateを全て満たし **Final OOS PASS**。ただしpanel平均は
+IS +0.07672% → Development +0.04206% → Final +0.02443% と縮小。
+総合評価はB。条件変更せずforward観察候補とする。
+Final結果を見た後のsignal選別・hold / threshold / SMA / direction変更は行わない。
+
+### Development候補3 — US30_Futures <- EUR_NZD — 実行前固定
+
+共有symbolなし。4 signalがすべてtrend方向に一致し、State 1 + Event 3。
+Developmentを見る前に次の4 Taskを固定する。
+
+```text
+signal    class  threshold  hold  start  sma   IS avg       IS t       shape
+Breakout  Event  0.5        5     1      10    +0.156870%  2.582644   persistent
+MACD      Event  0.5        3     1      10    +0.314178%  2.321814   fast_decay
+Streak    Event  2.5        5     1      10    +0.193360%  2.409287   fast_decay
+BB        State  2.0        1     1      10    +0.172511%  2.051095   State
+```
+
+すべて `counter_trade=false`、`use_excess_return=false`。
+既存75% Development gateを変更せず適用する。N=4なので:
+
+```text
+全4 Taskを評価できる
+positive Task数 >= 3 / 4
+State（BB）が positive
+Event 3本のうち少なくとも1本 positive
+panel average_pct > 0
+t_valueはgateに使わない
+```
+
+entry/exit両方が2016–2020内に完結したトレードだけで評価する。
+結果を見た後のTask除外、hold / threshold / SMA / direction変更は行わない。
 
 ---
 
@@ -363,10 +439,11 @@ Parameter Plateau Rule Bでも事前REJECT側だった。
 2. Hold Response整理 — 完了。
 3. Signal Consensus整理 — 完了。
 4. `EUR_CHF <- NZD_USD` Development — REJECT。
-5. `AUD_USD <- GBP_CHF / counter` の6 Task固定 — 完了。
-6. 75%一般化Development gate固定 — 完了。
-7. 6本だけ2016–2020 Development評価 — **現在地**。
-8. 結果をそのまま受け入れる。
+5. `AUD_USD <- GBP_CHF / counter` Development — **PASS**。
+6. 同じ6 Taskを2021–2025 Final OOSで評価 — **PASS / 総合B / forward観察**。
+7. `US30_Futures <- EUR_NZD / trend` の4 Task固定 — 完了。
+8. 既存75% Development gateをそのまま適用 — 3/4以上positive。
+9. 同じ4 Taskだけを2016–2020 Development評価 — **次の作業**。
+10. 結果をそのまま受け入れ、救済調整しない。
 
-**2021–2025はまだ開かない。Developmentで条件を再選択しない。**
-
+**`US30_Futures <- EUR_NZD` Development実行前にTask・gateを変更しない。**

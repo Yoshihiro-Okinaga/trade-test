@@ -39,6 +39,8 @@ trade-test/
 ├── research/
 │   ├── hold_response.py
 │   ├── signal_consensus.py
+│   ├── development_panel.py
+│   ├── final_oos_panel.py
 │   ├── pair_research.py
 │   ├── pair_research_config.py
 │   ├── pair_statistics.py
@@ -68,14 +70,17 @@ trade-test/
   signalの時間応答・鮮度・持続性を整理する。
 - `research/signal_consensus.py` — hold responseをTarget/Ref単位にまとめ、
   signal横断の方向一致・Event shape再現性を整理する。
+- `research/development_panel.py` — 固定済みTaskパネルだけを2016–2020で評価する。
+- `research/final_oos_panel.py` — Development PASS済みパネルだけを2021–2025で評価する。
 - `research/parameter_plateau.py` — ISとdevelopmentを比較し、現在の
   robustness条件を満たす候補を抽出する。
 - `walkforward.py` — 過去だけで選抜し、未知期間へ順次適用する。
 - `research/pair_research.py` — Pairの相関・cointegration・平均回帰研究。
 - `research/regime_research.py` — 固定済みstrategyの市場環境依存を調べる。
 
-特定銘柄専用の過去研究スクリプトやfinal OOS専用スクリプトは削除しました。
-重要な結果だけを `RESEARCH_HYPOTHESES.md` に残しています。
+特定銘柄専用の過去研究スクリプトは削除しました。
+Development / Final OOSは銘柄専用コードではなく、固定Taskパネルを入力にする
+共通スクリプトへ統一しています。重要な結果は `RESEARCH_HYPOTHESES.md` に残します。
 
 ---
 
@@ -450,15 +455,17 @@ Development結果を見た後にsignal / threshold / hold / SMA / directionを�
 通常の`ranking_period`はentry年だけで集計するため、2020年末のトレードが
 2021年に決済される可能性があります。専用評価ではholdoutを守るため、
 **entry_dateとexit_dateの両方が2016–2020内にあるトレードだけ**を使います。
+また、`backtest.calc_trade_results()`のcorrelationは全履歴で計算される補助値なので、
+Development / Final OOSの専用CSVには出力しません。
 
 ### 1件目: EUR_CHF <- NZD_USD
 
 4本固定、必要positive数は3/4。2016–2020 Developmentは4/4マイナスとなり
 **REJECT**。条件変更や救済調整は行いません。
 
-### 2件目: AUD_USD <- GBP_CHF
+### 2件目: AUD_USD <- GBP_CHF — PASS
 
-次に固定する6 StrategyTask:
+固定した6 StrategyTask:
 
 ```text
 signal   class  counter  threshold  hold  start  sma
@@ -470,40 +477,139 @@ Stoch    State  true     30.0       1     1      15
 Streak   Event  true     2.5        5     1      10
 ```
 
-この6本では必要positive数は `ceil(0.75 × 6) = 5`。
-EventはStreak 1本だけなので、State/Event確認条件によりStreakもpositiveである必要があります。
+2016–2020 Development結果:
+
+```text
+Streak   +0.137695%   positive
+BB       -0.008313%   negative
+Change   +0.031179%   positive
+RSI      +0.035777%   positive
+SMA      +0.039140%   positive
+Stoch    +0.016881%   positive
+
+positive Task   5 / 6
+State positive  4 / 5
+Event positive  1 / 1
+panel average   +0.042060%
+```
+
+事前固定gateをすべて満たしたため **Development PASS**。
+Development結果を見てsignal / threshold / hold / SMA / directionは変更しません。
+
+### 3件目: US30_Futures <- EUR_NZD — Development実行前
+
+Signal Consensusで共有symbolなし・4 signalすべてtrend方向に一致したため、
+次の4 StrategyTaskを固定します。
+
+```text
+signal    class  counter  threshold  hold  start  sma
+Breakout  Event  false    0.5        5     1      10
+MACD      Event  false    0.5        3     1      10
+Streak    Event  false    2.5        5     1      10
+BB        State  false    2.0        1     1      10
+```
+
+IS観察値:
+
+```text
+Breakout  avg +0.156870%  t 2.582644  persistent
+MACD      avg +0.314178%  t 2.321814  fast_decay
+Streak    avg +0.193360%  t 2.409287  fast_decay
+BB        avg +0.172511%  t 2.051095  State
+```
+
+既存の共通Development gateをそのまま使います。N=4なので必要positive数は3/4。
+StateはBB 1本だけなのでBBがnegativeならREJECTです。Eventは3本のうち
+少なくとも1本positiveが必要です。panel average_pct > 0も必須です。
+`t_value`は記録のみでgateには使いません。
+
+Development結果を見る前に、signal / threshold / hold / SMA / direction / gateを
+変更しないことを固定します。
+
+---
+
+## 9. Frozen Final OOS Panel
+
+Development PASSした `AUD_USD <- GBP_CHF / counter` の同じ6 Taskを、
+2021–2025 Final OOSでそのまま評価します。
+
+Final gateはDevelopmentと同じ条件を事前固定します。
+
+```text
+全Taskを評価できる
+average_pct > 0 が ceil(0.75 × Task数) 以上
+Stateで1本以上 positive
+Eventで1本以上 positive
+Taskの average_pct 単純平均 > 0
+t_valueは記録のみでgateには使わない
+```
+
+N=6なので5/6以上positiveが必要です。EventはStreak 1本だけなので、
+Streakがnegativeなら他の5本がpositiveでもREJECTです。
+
+`research/final_oos_panel.py` は、PASS済みのDevelopment出力を入力にします。
+Development summaryがPASSでない場合はfinalを実行しません。
+
+Finalでも期間境界の未来価格を使わないため、**entry_dateとexit_dateの両方が
+2021–2025内にあるトレードだけ**を評価します。2025年末entryが2026年に
+exitするトレードは除外します。
 
 実行:
 
 ```powershell
-py -3.14 research\development_panel.py `
-  --tasks results\signal_consensus\signal_consensus_tasks.csv `
+py -3.14 research\final_oos_panel.py `
+  --development-tasks results\development_panel_aud_usd_gbp_chf\development_panel_tasks.csv `
+  --development-summary results\development_panel_aud_usd_gbp_chf\development_panel_summary.csv `
   --config config.toml `
   --target AUD_USD `
   --ref GBP_CHF `
-  --output-dir results\development_panel_aud_usd_gbp_chf
+  --output-dir results\final_oos_panel_aud_usd_gbp_chf
 ```
 
 出力:
 
 ```text
-development_panel_tasks.csv
-development_panel_summary.csv
-development_panel_trades.csv
+final_oos_panel_tasks.csv
+final_oos_panel_summary.csv
+final_oos_panel_trades.csv
 ```
+
+Final結果を見た後に勝ったsignalだけを残す、hold / threshold / SMA / directionを
+変更する救済調整はしません。
+
+2021–2025 Final OOS結果:
+
+```text
+Streak   +0.099003%   positive
+BB       +0.013316%   positive
+Change   -0.017608%   negative
+RSI      +0.001760%   positive
+SMA      +0.026463%   positive
+Stoch    +0.023616%   positive
+
+positive Task   5 / 6
+State positive  4 / 5
+Event positive  1 / 1
+panel average   +0.024425%
+```
+
+事前固定gateをすべて満たし **Final OOS PASS**。
+ただしIS → Development → Finalでpanel edgeは縮小しているため、総合評価はB。
+条件変更せずforward観察候補とし、Streakだけを後付け採用するなどの救済選別はしません。
 
 ---
 
-## 9. 現在地 / 次の作業
+## 10. 現在地 / 次の作業
 
 1. 基本signalの2001–2015 IS screening — 完了。
 2. Hold Response整理 — 完了。
 3. Signal Consensus整理 — 完了。
 4. `EUR_CHF <- NZD_USD` Development — REJECT。
-5. 次候補 `AUD_USD <- GBP_CHF / counter` の6 Taskを固定 — 完了。
-6. 一般化Development gateをDevelopmentを見る前に固定 — 完了。
-7. `research/development_panel.py` で6本だけ2016–2020評価 — **現在地**。
-8. 結果をそのまま受け入れる。
+5. `AUD_USD <- GBP_CHF / counter` Development — **PASS**。
+6. 同じ6 Taskを2021–2025 Final OOSで評価 — **PASS / 総合B / forward観察**。
+7. `US30_Futures <- EUR_NZD / trend` の4 Task固定 — 完了。
+8. 既存75% Development gateをそのまま適用 — 3/4以上positive。
+9. 同じ4 Taskだけを2016–2020 Developmentで評価 — **次の作業**。
+10. 結果をそのまま受け入れ、救済調整しない。
 
-**2021–2025はまだ開かないこと。**
-
+**`US30_Futures <- EUR_NZD` Development実行前にTask・gateを変更しないこと。**

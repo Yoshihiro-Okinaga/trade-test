@@ -425,7 +425,7 @@ def run(
 
     for _, row in panel.iterrows():
         task = to_strategy_task(row)
-        trades, correlation, other_message = backtest.calc_trade_results(
+        trades, _correlation, other_message = backtest.calc_trade_results(
             config,
             False,
             *task.as_backtest_args(),
@@ -438,7 +438,6 @@ def run(
             for column in REQUIRED_COLUMNS
             if column in row.index
         }
-        result_row["correlation"] = correlation
         result_row["other_message"] = other_message
         result_row.update(metrics)
         result_rows.append(result_row)
