@@ -5,10 +5,10 @@
 FX・CFD・株式の価格データを使い、Ref銘柄の情報がTarget銘柄の
 将来値動きに残るかを検証する研究プロジェクトです。
 
-研究を再開しました。現在は**2001–2015 ISだけを使った
-Signal Lifetime / Hold ResponseとSignal Consensus研究**を進めています。
-この新しい研究手順を固定するまでは、2016–2020 developmentや
-2021–2025 finalを新規候補の選抜には使いません。
+**Signal Consensus研究ラウンド1は凍結済み**です。2001–2015 ISで作った候補を
+事前固定の順で6本まで2016–2020 Developmentへ送り、1本だけがPASSしました。
+その `AUD_USD <- GBP_CHF / counter` は固定6 Taskのまま2021–2025 Final OOSもPASSし、
+総合B・条件固定のforward観察候補としています。同じIS母集団から7件目は追加しません。
 
 ---
 
@@ -496,35 +496,126 @@ panel average   +0.042060%
 事前固定gateをすべて満たしたため **Development PASS**。
 Development結果を見てsignal / threshold / hold / SMA / directionは変更しません。
 
-### 3件目: US30_Futures <- EUR_NZD — Development実行前
+### 3件目: US30_Futures <- EUR_NZD — REJECT
 
-Signal Consensusで共有symbolなし・4 signalすべてtrend方向に一致したため、
-次の4 StrategyTaskを固定します。
-
-```text
-signal    class  counter  threshold  hold  start  sma
-Breakout  Event  false    0.5        5     1      10
-MACD      Event  false    0.5        3     1      10
-Streak    Event  false    2.5        5     1      10
-BB        State  false    2.0        1     1      10
-```
-
-IS観察値:
+固定4 Taskを2016–2020 Developmentで評価した結果、4/4がnegativeとなり
+**Development REJECT**。救済調整は行いません。
 
 ```text
-Breakout  avg +0.156870%  t 2.582644  persistent
-MACD      avg +0.314178%  t 2.321814  fast_decay
-Streak    avg +0.193360%  t 2.409287  fast_decay
-BB        avg +0.172511%  t 2.051095  State
+Breakout  -0.182124%  t -1.902535
+MACD      -0.023891%  t -0.139846
+Streak    -0.143626%  t -0.972921
+BB        -0.287993%  t -1.470421
+
+positive Task   0 / 4
+State positive  0 / 1
+Event positive  0 / 3
+panel average   -0.159409%
 ```
 
-既存の共通Development gateをそのまま使います。N=4なので必要positive数は3/4。
-StateはBB 1本だけなのでBBがnegativeならREJECTです。Eventは3本のうち
-少なくとも1本positiveが必要です。panel average_pct > 0も必須です。
-`t_value`は記録のみでgateには使いません。
+### 残りDevelopment候補の固定キュー — 完了 / 凍結
 
-Development結果を見る前に、signal / threshold / hold / SMA / direction / gateを
-変更しないことを固定します。
+Development結果を見て次候補を選び直すこと自体が選択バイアスになるため、
+追加Developmentは事前に3候補だけへ固定し、順番を変更しませんでした。
+これでSignal Consensus新手順のDevelopment検証は合計6候補で打ち切りです。
+
+固定順:
+
+```text
+4. GBP_USD <- EUR_JPY / trend
+5. GBP_CHF <- NZD_USD / counter
+6. CAD_JPY <- GBP_CHF / counter
+```
+
+`EUR_USD <- TRY_JPY`などTRY_JPY Refは長期構造変化の懸念が強いため
+標準キューとは別枠に置きました。EUR_GBP Refは過去のmulti-FX themeで
+Development情報を既に一部消費しているため、新手順そのものの検証キューから外しました。
+
+### 4件目: GBP_USD <- EUR_JPY — REJECT
+
+共有componentなし。3 signalがすべてtrend方向に一致し、State 2 + Event 1。
+事前固定した3 StrategyTaskをそのまま2016–2020 Developmentで評価しました。
+
+```text
+signal  class  counter  threshold  hold  start  sma   IS avg       IS t
+Streak  Event  false    2.5        5     1      10    +0.117440%  3.094860
+BB      State  false    1.0        1     1      50    +0.028374%  2.287219
+Stoch   State  false    30.0       1     1      10    +0.027234%  2.034618
+```
+
+Development結果:
+
+```text
+Streak  n=339  avg -0.052439%  t -0.602310
+BB      n=718  avg -0.003650%  t -0.145088
+Stoch   n=550  avg +0.010456%  t +0.414805
+
+positive Task   1 / 3
+State positive  1 / 2
+Event positive  0 / 1
+panel average   -0.015211%
+```
+
+N=3なので事前gateは3/3 positive必須。条件を満たさず **REJECT**。
+救済調整は行いません。
+
+### 5件目: GBP_CHF <- NZD_USD — REJECT
+
+共有componentなし、3 signalすべてcounter。State 1 + Event 2。
+事前固定Task:
+
+```text
+Breakout  Event  counter  threshold=0.5  hold=4  start=1  sma=10
+Streak    Event  counter  threshold=2.5  hold=5  start=1  sma=10
+BB        State  counter  threshold=2.5  hold=1  start=1  sma=100
+```
+
+N=3の既存75% gateをそのまま適用し **Development REJECT**。
+このREADMEには詳細Development数値を転記していません。
+Task除外、hold / threshold / SMA / direction変更は行いません。
+
+### 6件目: CAD_JPY <- GBP_CHF — REJECT
+
+共有componentなし、3 signalすべてcounter。State 2 + Event 1。
+事前固定Task:
+
+```text
+Breakout  Event  counter  threshold=0.5   hold=1  start=1  sma=10
+SMA       State  counter  threshold=1.0   hold=1  start=1  sma=10
+Stoch     State  counter  threshold=30.0  hold=1  start=1  sma=15
+```
+
+N=3の既存75% gateをそのまま適用し **Development REJECT**。
+このREADMEには詳細Development数値を転記していません。
+救済調整は行いません。
+
+### Signal Consensus研究ラウンド1 — 凍結結果
+
+事前に打ち切りを固定した6候補の結果:
+
+```text
+1. EUR_CHF <- NZD_USD / counter        Development REJECT
+2. AUD_USD <- GBP_CHF / counter        Development PASS -> Final OOS PASS
+3. US30_Futures <- EUR_NZD / trend     Development REJECT
+4. GBP_USD <- EUR_JPY / trend          Development REJECT
+5. GBP_CHF <- NZD_USD / counter        Development REJECT
+6. CAD_JPY <- GBP_CHF / counter        Development REJECT
+```
+
+集計:
+
+```text
+Development PASS   1 / 6
+Development REJECT 5 / 6
+Final OOS対象      1 / 1
+Final OOS PASS     1 / 1
+```
+
+このラウンドでは **追加の7件目を選ばない**。
+同じ2001–2015 Signal Consensus母集団から別候補を後付けで掘り続けず、
+この研究ラウンドをここで凍結します。
+`AUD_USD <- GBP_CHF / counter` は条件固定のforward観察候補であり、
+Final結果を見た後のsignal選別やパラメータ変更は行いません。
 
 ---
 
@@ -599,17 +690,27 @@ panel average   +0.024425%
 
 ---
 
-## 10. 現在地 / 次の作業
+## 10. 現在地 / 研究ラウンド凍結
 
 1. 基本signalの2001–2015 IS screening — 完了。
 2. Hold Response整理 — 完了。
 3. Signal Consensus整理 — 完了。
-4. `EUR_CHF <- NZD_USD` Development — REJECT。
-5. `AUD_USD <- GBP_CHF / counter` Development — **PASS**。
-6. 同じ6 Taskを2021–2025 Final OOSで評価 — **PASS / 総合B / forward観察**。
-7. `US30_Futures <- EUR_NZD / trend` の4 Task固定 — 完了。
-8. 既存75% Development gateをそのまま適用 — 3/4以上positive。
-9. 同じ4 Taskだけを2016–2020 Developmentで評価 — **次の作業**。
-10. 結果をそのまま受け入れ、救済調整しない。
+4. Development候補を合計6本で打ち切り — 完了。
+5. Development PASSは `AUD_USD <- GBP_CHF / counter` の1/6のみ。
+6. 同じ6 Taskの2021–2025 Final OOS — **PASS / 総合B / forward観察**。
+7. 残り5候補はDevelopment REJECT。救済調整なし。
+8. **Signal Consensus研究ラウンド1を凍結。7件目は追加しない。**
 
-**`US30_Futures <- EUR_NZD` Development実行前にTask・gateを変更しないこと。**
+次に研究を再開する場合は、この凍結済み母集団の続きを掘るのではなく、
+**別仮説・別選抜方法を新しい研究ラウンドとして事前定義してから開始**します。
+
+凍結中の唯一のforward観察候補:
+
+```text
+AUD_USD <- GBP_CHF / counter
+評価: B
+状態: Task / direction / threshold / hold / SMA固定
+用途: paper / forward observation
+```
+
+**このラウンドの条件・候補数・結果を後から変更しないこと。**

@@ -11,12 +11,14 @@
 
 ```text
 本番投入可能     なし
-研究             再開済み
-現在の研究       Signal Consensus候補の固定パネル検証
+研究             Signal Consensus研究ラウンド1を凍結
 Discovery        2001–2015 IS
-Development      2016–2020
+Development      2016–2020（固定6候補を検証済み）
+Development PASS 1 / 6
 Final OOS        2021–2025（AUD_USD <- GBP_CHFで消費済み）
-次               US30_Futures <- EUR_NZD の固定4 Task Development
+Final OOS PASS   1 / 1
+forward候補      AUD_USD <- GBP_CHF / counter（総合B、条件固定）
+次               同じ母集団は掘らず、新研究ラウンドを事前定義して開始
 ```
 
 final OOSまで進めた過去研究では、IS/developmentで見えたedgeがfinalで
@@ -32,8 +34,10 @@ final stress平均プラス    1/6
 Regime優位方向維持        1/3
 ```
 
-現在はこの反省から、parameterの最高点だけでなく、
-**signal familyとhold方向の構造**をISで確認してからdevelopmentへ進む方法を研究中です。
+この反省から、parameterの最高点だけでなく、
+**signal familyとhold方向の構造**をISで確認してからdevelopmentへ進む方法を1ラウンド検証しました。
+6候補中5候補がDevelopmentで脱落したため、Signal Consensusは候補を絞る探索フィルタとして残し、
+この母集団の追加掘りは行いません。
 
 ---
 
@@ -304,33 +308,121 @@ IS +0.07672% → Development +0.04206% → Final +0.02443% と縮小。
 総合評価はB。条件変更せずforward観察候補とする。
 Final結果を見た後のsignal選別・hold / threshold / SMA / direction変更は行わない。
 
-### Development候補3 — US30_Futures <- EUR_NZD — 実行前固定
+### Development候補3 — US30_Futures <- EUR_NZD — REJECT
 
-共有symbolなし。4 signalがすべてtrend方向に一致し、State 1 + Event 3。
-Developmentを見る前に次の4 Taskを固定する。
-
-```text
-signal    class  threshold  hold  start  sma   IS avg       IS t       shape
-Breakout  Event  0.5        5     1      10    +0.156870%  2.582644   persistent
-MACD      Event  0.5        3     1      10    +0.314178%  2.321814   fast_decay
-Streak    Event  2.5        5     1      10    +0.193360%  2.409287   fast_decay
-BB        State  2.0        1     1      10    +0.172511%  2.051095   State
-```
-
-すべて `counter_trade=false`、`use_excess_return=false`。
-既存75% Development gateを変更せず適用する。N=4なので:
+固定4 Taskを2016–2020 Developmentで評価した結果:
 
 ```text
-全4 Taskを評価できる
-positive Task数 >= 3 / 4
-State（BB）が positive
-Event 3本のうち少なくとも1本 positive
-panel average_pct > 0
-t_valueはgateに使わない
+Breakout  n=582  avg -0.182124%  t -1.903
+MACD      n=105  avg -0.023891%  t -0.140
+Streak    n=294  avg -0.143626%  t -0.973
+BB        n=68   avg -0.287993%  t -1.470
 ```
 
-entry/exit両方が2016–2020内に完結したトレードだけで評価する。
-結果を見た後のTask除外、hold / threshold / SMA / direction変更は行わない。
+4/4マイナス、panel平均 -0.159409%で **REJECT**。
+Task除外、hold / threshold / SMA / direction変更は行わない。
+
+### 残りDevelopment検証の固定キュー — 完了 / 凍結
+
+Development結果を見て次候補を選び続けることによる選択バイアスを避けるため、
+追加検証は3候補に事前固定し、合計6候補で打ち切った。
+
+```text
+4. GBP_USD <- EUR_JPY / trend
+5. GBP_CHF <- NZD_USD / counter
+6. CAD_JPY <- GBP_CHF / counter
+```
+
+### Development候補4 — GBP_USD <- EUR_JPY — REJECT
+
+共有componentなし。3 signalすべてtrend。State 2 + Event 1。
+事前固定Task:
+
+```text
+signal  class  threshold  hold  start  sma   IS avg       IS t
+Streak  Event  2.5        5     1      10    +0.117440%  3.094860
+BB      State  1.0        1     1      50    +0.028374%  2.287219
+Stoch   State  30.0       1     1      10    +0.027234%  2.034618
+```
+
+2016–2020 Development結果:
+
+```text
+Streak  n=339  avg -0.052439%  t -0.602310
+BB      n=718  avg -0.003650%  t -0.145088
+Stoch   n=550  avg +0.010456%  t +0.414805
+
+positive Task   1 / 3
+State positive  1 / 2
+Event positive  0 / 1
+panel average   -0.015211%
+```
+
+N=3なので3/3 positive必須。事前gateを満たさず **REJECT**。
+救済調整は行わない。
+
+### Development候補5 — GBP_CHF <- NZD_USD — REJECT
+
+共有componentなし。3 signalすべてcounter。State 1 + Event 2。
+事前固定Task:
+
+```text
+Breakout  Event  threshold=0.5  hold=4  start=1  sma=10
+Streak    Event  threshold=2.5  hold=5  start=1  sma=10
+BB        State  threshold=2.5  hold=1  start=1  sma=100
+```
+
+すべて `counter_trade=true`、`use_excess_return=false`。
+既存75% gateを変更せず適用し **Development REJECT**。
+詳細Development数値はこの仮説ファイルには転記していない。
+Task除外、hold / threshold / SMA / direction変更は行わない。
+
+### Development候補6 — CAD_JPY <- GBP_CHF — REJECT
+
+共有componentなし。3 signalすべてcounter。State 2 + Event 1。
+事前固定Task:
+
+```text
+Breakout  Event  threshold=0.5   hold=1  start=1  sma=10
+SMA       State  threshold=1.0   hold=1  start=1  sma=10
+Stoch     State  threshold=30.0  hold=1  start=1  sma=15
+```
+
+すべて `counter_trade=true`、`use_excess_return=false`。
+既存75% gateを変更せず適用し **Development REJECT**。
+詳細Development数値はこの仮説ファイルには転記していない。
+救済調整は行わない。
+
+### Signal Consensus研究ラウンド1 — 結論 / 凍結
+
+固定した6候補の最終結果:
+
+```text
+1. EUR_CHF <- NZD_USD / counter        Development REJECT
+2. AUD_USD <- GBP_CHF / counter        Development PASS -> Final OOS PASS
+3. US30_Futures <- EUR_NZD / trend     Development REJECT
+4. GBP_USD <- EUR_JPY / trend          Development REJECT
+5. GBP_CHF <- NZD_USD / counter        Development REJECT
+6. CAD_JPY <- GBP_CHF / counter        Development REJECT
+```
+
+```text
+Development survival = 1 / 6
+Final OOS tested     = 1 / 1
+Final OOS PASS       = 1 / 1
+```
+
+観察:
+
+- ISで複数signal・方向一致・State/Event確認まで揃えても、5/6はDevelopmentで脱落した。
+- Signal Consensusは偽陽性を除き切るものではなく、候補を絞る探索フィルタとして扱う。
+- 生き残った `AUD_USD <- GBP_CHF / counter` もISからFinalへedgeが縮小しており、
+  production-readyとはみなさない。
+- Final後にStreakだけを残すなどの後付け選別はしない。
+- 7件目を追加せず、この2001–2015 Signal Consensus母集団の研究ラウンドを凍結する。
+
+次に研究を始める場合は、同じ候補表の続きを掘るのではなく、
+**新しい仮説・選抜規則・停止条件を事前固定した別ラウンド**として開始する。
 
 ---
 
@@ -433,17 +525,23 @@ Parameter Plateau Rule Bでも事前REJECT側だった。
 
 ---
 
-## 8. 次の作業
+## 8. 現在地 / 凍結後
 
 1. 2001–2015 IS screening — 完了。
 2. Hold Response整理 — 完了。
 3. Signal Consensus整理 — 完了。
-4. `EUR_CHF <- NZD_USD` Development — REJECT。
-5. `AUD_USD <- GBP_CHF / counter` Development — **PASS**。
-6. 同じ6 Taskを2021–2025 Final OOSで評価 — **PASS / 総合B / forward観察**。
-7. `US30_Futures <- EUR_NZD / trend` の4 Task固定 — 完了。
-8. 既存75% Development gateをそのまま適用 — 3/4以上positive。
-9. 同じ4 Taskだけを2016–2020 Development評価 — **次の作業**。
-10. 結果をそのまま受け入れ、救済調整しない。
+4. 固定6候補のDevelopment — 完了。
+5. Development PASSは `AUD_USD <- GBP_CHF / counter` の1/6のみ。
+6. 同じ6 Taskの2021–2025 Final OOS — **PASS / 総合B / forward観察**。
+7. 他5候補はDevelopment REJECT。救済調整なし。
+8. **Signal Consensus研究ラウンド1を凍結。追加候補は掘らない。**
 
-**`US30_Futures <- EUR_NZD` Development実行前にTask・gateを変更しない。**
+凍結中のforward観察候補:
+
+```text
+AUD_USD <- GBP_CHF / counter
+評価: B
+Task / direction / threshold / hold / SMA: 固定
+```
+
+次の研究は、この母集団の延長ではなく新しい研究ラウンドとして始める。
