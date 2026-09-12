@@ -11,14 +11,16 @@ class TradeCodeType(StrEnum):
 
 
 class SignalType(StrEnum):
+    #sma_periods使用
     CHANGE = "change"
     SMA = "sma"
     BB = "bb"
-    MACD = "macd"
     RSI = "rsi"
     DI = "di"
     #ADX = "adx"
     STOCH = "stoch"
+    #sma_periods不使用
+    MACD = "macd"
     STREAK = "streak"
     BREAKOUT = "breakout"
 

@@ -189,27 +189,6 @@ class MarketData:
         ref["ref_signal_bb"] = bb.shift(start_days)
         # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
         ref["ref_signal_bb_now"] = bb
-        
-        # macd（ヒストグラムのゼロ交差を +1 / -1 / 0 で表す）
-        # macd 本体は価格スケールに比例するため、値そのものを閾値と比べると
-        # 銘柄ごとに判定基準が変わってしまう。符号が変わった瞬間だけを見れば
-        # スケールに依存しないので、交差をイベントとして扱う。
-        ema_fast = ref["ref_base"].ewm(span=12, adjust=False).mean()
-        ema_slow = ref["ref_base"].ewm(span=26, adjust=False).mean()
-        macd = ema_fast - ema_slow
-        macd_signal_line = macd.ewm(span=9, adjust=False).mean()
-        macd_hist = macd - macd_signal_line
-        prev_hist = macd_hist.shift(1)
-        # マイナス→プラスで +1、プラス→マイナスで -1、それ以外は 0。
-        # 立ち上がり（NaN）の区間は交差と判定しない。
-        macd_cross = (
-            ((macd_hist > 0) & (prev_hist <= 0)).astype(float)
-            - ((macd_hist < 0) & (prev_hist >= 0)).astype(float)
-        )
-        macd_cross = macd_cross.where(macd_hist.notna() & prev_hist.notna())
-        ref["ref_signal_macd"] = macd_cross.shift(start_days)
-        # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
-        ref["ref_signal_macd_now"] = macd_cross
 
         # rsi
         delta = ref["ref_base"].diff()
@@ -262,6 +241,27 @@ class MarketData:
         ref["ref_signal_stoch"] = stoch_k.shift(start_days)
         # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
         ref["ref_signal_stoch_now"] = stoch_k
+
+        # macd（ヒストグラムのゼロ交差を +1 / -1 / 0 で表す）
+        # macd 本体は価格スケールに比例するため、値そのものを閾値と比べると
+        # 銘柄ごとに判定基準が変わってしまう。符号が変わった瞬間だけを見れば
+        # スケールに依存しないので、交差をイベントとして扱う。
+        ema_fast = ref["ref_base"].ewm(span=12, adjust=False).mean()
+        ema_slow = ref["ref_base"].ewm(span=26, adjust=False).mean()
+        macd = ema_fast - ema_slow
+        macd_signal_line = macd.ewm(span=9, adjust=False).mean()
+        macd_hist = macd - macd_signal_line
+        prev_hist = macd_hist.shift(1)
+        # マイナス→プラスで +1、プラス→マイナスで -1、それ以外は 0。
+        # 立ち上がり（NaN）の区間は交差と判定しない。
+        macd_cross = (
+            ((macd_hist > 0) & (prev_hist <= 0)).astype(float)
+            - ((macd_hist < 0) & (prev_hist >= 0)).astype(float)
+        )
+        macd_cross = macd_cross.where(macd_hist.notna() & prev_hist.notna())
+        ref["ref_signal_macd"] = macd_cross.shift(start_days)
+        # 生シグナル(shift前)。live の pending(最終日発火)検出に使う。
+        ref["ref_signal_macd_now"] = macd_cross
 
         # streak（何日連続で上げ／下げたか）
         # 3日連続で上げたら +3、2日連続で下げたら -2 のように符号付きで表す。
