@@ -1,0 +1,69 @@
+# 売買コスト（値幅）。銘柄ごとに、仕掛け時に1回だけ引かれる片道コスト。
+# 元コードで判明している値のみ設定済み。残りは 0.0 なので、
+# 実際のブローカーのスプレッドが分かり次第、各自で埋めること。
+# ここが 0.0 のままだと、その銘柄はコストなしで評価される点に注意。
+# 銘柄ごとの売買コストとスワップ。
+# cost: 仕掛け時に1回だけ引く片道コスト（値幅）
+# swap: ロング保有時の日次スワップ率（％／日）。プラスならロングで受け取り、
+#       ショートは符号が反転する（売買が対称なブローカーを想定）。
+#       省略すると 0（株の現物や、値が不明な指数など）。
+
+# 銘柄の定義は、ここ1箇所だけに書く。
+# cost: 仕掛け時に1回だけ引く片道コスト（値幅）
+# swap: ロング保有時の日次スワップ率（％／日）。プラスならロングで受け取り、
+#       ショートは符号が反転する。省略すると 0。
+[symbols]
+EUR_GBP = { cost = 0.0001, swap = -0.00396, group = "fx" }
+EUR_USD = { cost = 0.00003, swap = -0.00319, group = "fx" }
+GBP_USD = { cost = 0.0001, swap = -0.00009, group = "fx" }
+USD_JPY = { cost = 0.002, swap = 0.00780, group = "fx" }
+AUD_JPY = { cost = 0.005, swap = 0.00891, group = "fx" }
+AUD_NZD = { cost = 0.0008, swap = 0.00477, group = "fx" }
+AUD_USD = { cost = 0.00004, swap = 0.00117, group = "fx" }
+CAD_JPY = { cost = 0.006, swap = 0.00355, group = "fx" }
+CHF_JPY = { cost = 0.008, swap = -0.00159, group = "fx" }
+EUR_AUD = { cost = 0.00015, swap = -0.00538, group = "fx" }
+EUR_CHF = { cost = 0.00015, swap = 0.00533, group = "fx" }
+EUR_JPY = { cost = 0.004, swap = 0.00412, group = "fx" }
+EUR_NZD = { cost = 0.00029, group = "fx" }
+GBP_AUD = { cost = 0.00015, swap = -0.00141, group = "fx" }
+GBP_CHF = { cost = 0.00028, swap = 0.00975, group = "fx" }
+GBP_JPY = { cost = 0.009, swap = 0.00791, group = "fx" }
+NZD_JPY = { cost = 0.007, swap = 0.00399, group = "fx" }
+NZD_USD = { cost = 0.00016, swap = -0.00291, group = "fx" }
+TRY_JPY = { cost = 0.014, swap = 0.07587, group = "fx" }
+USD_CAD = { cost = 0.0016, swap = 0.00985, group = "fx" }
+USD_CHF = { cost = 0.00016, swap = 0.00914, group = "fx" }
+ZAR_JPY = { cost = 0.009, swap = 0.01338, group = "fx" }
+CBOE_Volatility_Index = { cost = 0.09, group = "index" }
+#DAX_Futures = { cost = 3.0, group = "index" }
+#JAPAN255_Futures = { cost = 10.0, group = "index" }
+NQ100_Futures = { cost = 0.5, group = "index" }
+UK100_Futures = { cost = 3.0, group = "index" }
+US30_Futures = { cost = 4.0, group = "index" }
+USSPX500_Futures = { cost = 2.0, group = "index" }
+COPPER_USD = { cost = 0.02, group = "commodity" }
+GOLD_USD = { cost = 1.0, group = "commodity" }
+OIL_USD = { cost = 0.03, group = "commodity" }
+#PLATINUM_USD = { cost = 5.0, group = "commodity" }
+SILVER_USD = { cost = 0.1, group = "commodity" }
+"1963_日揮ホールディングス" = { cost = 0, group = "stock" }
+"3407_旭化成" = { cost = 0, group = "stock" }
+"5401_日本製鉄" = { cost = 0, group = "stock" }
+"6752_パナソニック" = { cost = 0, group = "stock" }
+"6770_アルプスアルパイン" = { cost = 0, group = "stock" }
+"8802_三菱地所" = { cost = 0, group = "stock" }
+"9501_東京電力ホールディングス" = { cost = 0, group = "stock" }
+"9502_中部電力" = { cost = 0, group = "stock" }
+"9503_関西電力" = { cost = 0, group = "stock" }
+"9504_中国電力" = { cost = 0, group = "stock" }
+"9505_北陸電力" = { cost = 0, group = "stock" }
+"9506_東北電力" = { cost = 0, group = "stock" }
+"9507_四国電力" = { cost = 0, group = "stock" }
+"9508_九州電力" = { cost = 0, group = "stock" }
+"9509_北海道電力" = { cost = 0, group = "stock" }
+"1808_長谷工コーポレーション" = { cost = 0, group = "stock" }
+"7201_日産自動車" = { cost = 0, group = "stock" }
+"7261_マツダ" = { cost = 0, group = "stock" }
+"8628_松井証券" = { cost = 0, group = "stock" }
+

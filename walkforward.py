@@ -711,8 +711,16 @@ def run(
     try:
         with open(config_path, "rb") as f:
             config_data = tomllib.load(f)
-    except FileNotFoundError:
-        print(f"エラー: {config_path} が見つかりません。")
+
+        # 設定は役割ごとに分割するが、既存コードには従来どおり1つのdictを渡す。
+        # 旧来の1ファイル構成も使えるよう、追加ファイルが存在するときだけマージする。
+        for extra_name in ("symbols.toml", "walkforward.toml"):
+            extra_path = config_path.parent / extra_name
+            if extra_path.exists():
+                with open(extra_path, "rb") as f:
+                    config_data.update(tomllib.load(f))
+    except FileNotFoundError as exc:
+        print(f"エラー: {exc.filename} が見つかりません。")
         sys.exit(1)
 
     config = backtest_config.BackTestConfig(config_data)

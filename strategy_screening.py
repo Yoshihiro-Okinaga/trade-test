@@ -72,8 +72,15 @@ def main(config_path=None, data_folder=None, save_dir=None):
     try:
         with open(config_path, "rb") as f:
             config_data = tomllib.load(f)
-    except FileNotFoundError:
-        print(f"エラー: {config_path} が見つかりません。")
+
+        # symbols.toml はほぼ固定の銘柄定義。存在するときだけ単純マージする。
+        # 旧来の1ファイル構成もそのまま利用できる。
+        symbols_path = config_path.parent / "symbols.toml"
+        if symbols_path.exists():
+            with open(symbols_path, "rb") as f:
+                config_data.update(tomllib.load(f))
+    except FileNotFoundError as exc:
+        print(f"エラー: {exc.filename} が見つかりません。")
         sys.exit(1)
 
     config = backtest_config.BackTestConfig(config_data)
