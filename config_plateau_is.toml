@@ -3,21 +3,28 @@
 # 通常のScreening / Walk-forward用。
 # Parameter Plateau研究は専用configを使う。
 
-symbol_groups = [
+ref_symbol_groups = [
     "fx",
     "index",
     "commodity",
 ]
 
-symbol_names = []
+target_symbol_groups = [
+    "fx",
+    "index",
+    "commodity",
+]
+
+ref_symbol_names = []
+target_symbol_names = []
 
 # Refには使えるがTargetからは除外する。
-exclude_names = [
+target_exclude_names = [
     "CBOE_Volatility_Index",
 ]
 
 # trueかつsymbol_pairsが非空なら名指しペアだけを使う。
-# falseならsymbol_groups / symbol_namesの総当たり。
+# falseなら ref_symbol_* × target_symbol_* の総当たり。
 symbol_pairs_use = false
 symbol_pairs = []
 
@@ -128,6 +135,8 @@ max_open_positions = 5
 # pairs=[] なら選択銘柄の組み合わせを広く調べる。
 period = [2001, 2015]
 hedge_fit_period = []
+# 旧設定の exclude_names と同じ研究対象を維持する。
+exclude_names = ["CBOE_Volatility_Index"]
 pairs = []
 
 [regime_research]

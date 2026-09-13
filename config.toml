@@ -3,11 +3,16 @@
 # use_excess_returnはtrue, false両方
 # walkforwardはfalseのみ
 
-# 使う銘柄。ref（シグナル源）と target（売買対象）の両方に使う。
-# symbol_groups でまとめて選ぶ（"fx" / "index" / "commodity" / "stock"）。
-# symbol_names で個別に追加もできる（両方書けば合算される）。
-# 銘柄の定義はすべて下の [symbols] にあり、グループもそこで宣言する。
-symbol_groups = [
+# ref（シグナル源）と target（売買対象）は独立して選ぶ。
+# group は下の [symbols] で定義する（"fx" / "index" / "commodity" / "stock"）。
+ref_symbol_groups = [
+    "fx",
+    #"index",
+    "commodity",
+    #"stock",
+]
+
+target_symbol_groups = [
     #"fx",
     #"index",
     #"commodity",
@@ -15,7 +20,7 @@ symbol_groups = [
 ]
 
 # グループに含まれない銘柄を個別に足したいときに使う。
-symbol_names = [
+ref_symbol_names = [
     # "EUR_GBP",
     # "GBP_CHF",
     # "AUD_USD",
@@ -25,8 +30,16 @@ symbol_names = [
     # #"USD_CHF",
 ]
 
-# ref には使うが target からは外す銘柄（コストが高い、取引困難など）。
-exclude_names = [
+target_symbol_names = [
+    # "EUR_GBP",
+    # "GBP_CHF",
+    # "AUD_USD",
+    # "AUD_NZD",
+    # "GBP_USD",
+]
+
+# target からだけ外す銘柄。ref としては使用できる。
+target_exclude_names = [
     "CBOE_Volatility_Index",
 ]
 
@@ -163,6 +176,20 @@ symbol_pairs_all = [
 ]
 
 signal_type_list = [
+#signal_type_list_not_sma = [
+    #"change",
+    #"sma",
+    #"bb",
+    #"rsi",
+    #"di",
+    #"stoch",
+    "macd",
+    "streak",
+    "breakout",
+]
+
+#signal_type_list = [
+signal_type_list_sma = [
     "change",
     "sma",
     "bb",
@@ -194,6 +221,12 @@ start_days_list = [
 ]
 
 sma_period_list = [
+#sma_period_list_not_sma = [
+    10,
+]
+
+#sma_period_list = [
+sma_period_list_sma = [
     10,
     15,
     20,
@@ -206,7 +239,7 @@ counter_trade = [
     true,
     false,
 ]
-no_overlap = false             # 重複補正あり
+no_overlap = true             # 重複補正あり
 
 # 超過リターン評価。true にすると、各トレードの損益から
 # 「その銘柄を単に保有していた場合の平均的な変動」を差し引く。
@@ -214,7 +247,7 @@ no_overlap = false             # 重複補正あり
 # 除いた純粋な優位性を測れる。false なら従来通りの実損益。
 # リストで書くと両方を1回の実行で比較できる。
 use_excess_return = [
-    #true, 
+    true, 
     false,
 ]
 
@@ -223,7 +256,7 @@ use_excess_return = [
 # average_pct_2001_2005 のような列を出力する（trade_count も併記）。
 # 空リスト [] なら期間別の集計をしない。
 #period_years = [2001, 2006, 2011, 2016, 2021]
-period_years = []
+period_years = [2001, 2006, 2011]
 
 # 期間の設定
 ranking_period = [2001, 2015]

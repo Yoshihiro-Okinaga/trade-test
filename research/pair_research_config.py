@@ -5,8 +5,10 @@ from dataclasses import dataclass
 class PairResearchConfig:
     """相関・平均回帰研究で使う設定。
 
-    [pair_research] が無い場合は、既存 config.toml の symbol_groups /
-    symbol_names / exclude_names / ranking_period を再利用する。
+    [pair_research] で symbol_groups / symbol_names を指定しない場合は、
+    config.toml の ref_symbol_* と target_symbol_* の和集合を研究対象にする。
+    pair_research.exclude_names は研究専用の除外で、target_exclude_names は
+    Ref候補を消さないため自動適用しない。
     symbol_pairs は意図的に使わない。固定ペア検証では [pair_research].pairs を使う。
     """
 
@@ -55,23 +57,22 @@ class PairResearchConfig:
             "pair_research.hedge_fit_period",
         )
 
+        default_symbol_groups = cls._merge_unique(
+            config_data.get("ref_symbol_groups", []),
+            config_data.get("target_symbol_groups", []),
+        )
+        default_symbol_names = cls._merge_unique(
+            config_data.get("ref_symbol_names", []),
+            config_data.get("target_symbol_names", []),
+        )
         symbol_groups = tuple(
-            section.get(
-                "symbol_groups",
-                config_data.get("symbol_groups", []),
-            )
+            section.get("symbol_groups", default_symbol_groups)
         )
         symbol_names = tuple(
-            section.get(
-                "symbol_names",
-                config_data.get("symbol_names", []),
-            )
+            section.get("symbol_names", default_symbol_names)
         )
         exclude_names = tuple(
-            section.get(
-                "exclude_names",
-                config_data.get("exclude_names", []),
-            )
+            section.get("exclude_names", [])
         )
         pairs = cls._parse_pairs(
             section.get("pairs", [])
@@ -154,6 +155,17 @@ class PairResearchConfig:
         )
         config._validate()
         return config
+
+    @staticmethod
+    def _merge_unique(*value_lists) -> tuple[str, ...]:
+        """複数の設定リストを、登場順を保ったまま重複なしで結合する。"""
+        merged = []
+        for values in value_lists:
+            for value in values:
+                if value not in merged:
+                    merged.append(value)
+        return tuple(merged)
+
 
     @staticmethod
     def _parse_pairs(
@@ -302,7 +314,8 @@ class PairResearchConfig:
         """設定から研究対象銘柄を定義順で作る。
 
         pairs が指定されている場合は、その固定ペアに必要な銘柄だけを返す。
-        pairs が空なら従来通り symbol_groups / symbol_names から作る。
+        pairs が空なら pair_research の symbol_groups / symbol_names、
+        未指定なら root の ref/target 設定の和集合から作る。
         """
         symbols = config_data.get("symbols", {})
         if not isinstance(symbols, dict) or not symbols:
@@ -375,7 +388,9 @@ class PairResearchConfig:
         if len(selected) < 2:
             raise ValueError(
                 "相関ペア研究には2銘柄以上必要です。"
-                "symbol_groups / symbol_names を確認してください。"
+                "pair_research.symbol_groups / symbol_names または "
+                "root の ref/target_symbol_* を確認してください。"
             )
 
         return selected
+

@@ -29,14 +29,25 @@ class SignalType(StrEnum):
 class BackTestConfig:
     def __init__(self, config_data):
         # 銘柄の定義（コスト・スワップ・グループ）は symbols に1箇所だけ書く。
-        # 使う銘柄は symbol_groups（"fx" などのまとまり）か symbol_names
-        # （個別指定）で選ぶ。両方書けば合算される。
-        # target から外したいものだけ exclude_names に書く
-        # （ref には含まれるが target にはならない）。
+        # ref（シグナル源）と target（売買対象）は、それぞれ独立した
+        # symbol_groups / symbol_names で選ぶ。
+        # target から外したいものだけ target_exclude_names に書く。
         self.symbols: dict = config_data.get("symbols", {})
-        self.symbol_groups: List[str] = config_data.get("symbol_groups", [])
-        self.symbol_names: List[str] = config_data.get("symbol_names", [])
-        self.exclude_names: List[str] = config_data.get("exclude_names", [])
+        self.ref_symbol_groups: List[str] = config_data.get(
+            "ref_symbol_groups", []
+        )
+        self.ref_symbol_names: List[str] = config_data.get(
+            "ref_symbol_names", []
+        )
+        self.target_symbol_groups: List[str] = config_data.get(
+            "target_symbol_groups", []
+        )
+        self.target_symbol_names: List[str] = config_data.get(
+            "target_symbol_names", []
+        )
+        self.target_exclude_names: List[str] = config_data.get(
+            "target_exclude_names", []
+        )
 
         # 存在しないグループ名を指定した場合、黙って空になると原因が分からないので
         # 先に知らせる（タイプミス対策）。
@@ -44,18 +55,22 @@ class BackTestConfig:
             value.get("group") for value in self.symbols.values()
             if isinstance(value, dict) and value.get("group")
         }
-        unknown_groups = [g for g in self.symbol_groups if g not in defined_groups]
-        if unknown_groups:
-            raise ValueError(
-                "symbolsに存在しないグループです: " + ", ".join(unknown_groups)
-                + "（定義済み: " + ", ".join(sorted(defined_groups)) + "）"
-            )
+        self._validate_symbol_groups(
+            self.ref_symbol_groups,
+            "ref_symbol_groups",
+            defined_groups,
+        )
+        self._validate_symbol_groups(
+            self.target_symbol_groups,
+            "target_symbol_groups",
+            defined_groups,
+        )
 
         # --- ペア名指し（検証・運用用）を最優先で解釈する ------------------
         # symbol_pairs があれば「そのペアだけ」を回す（総当たりしない）。
         # 各要素は { target = "...", ref = "..." } のテーブル形式を推奨
         # （順序の曖昧さを排除）。[target, ref] の2要素配列も許容する。
-        # 空/未指定なら従来どおり symbol_groups × symbol_names の総当たり。
+        # 空/未指定なら ref_list × target_list の総当たり。
         raw_pairs = config_data.get("symbol_pairs", [])
         if config_data.get("symbol_pairs_use", False) is False:
             raw_pairs = []
@@ -96,36 +111,39 @@ class BackTestConfig:
                 dict.fromkeys(t for r, t in self.symbol_pairs)
             )
         else:
-            # グループ指定を銘柄名に展開する。symbols での定義順を保つ。
-            wanted_groups = set(self.symbol_groups)
-            selected: List[str] = [
-                name for name, value in self.symbols.items()
-                if isinstance(value, dict) and value.get("group") in wanted_groups
+            self.ref_list = self._build_symbol_list(
+                self.ref_symbol_groups,
+                self.ref_symbol_names,
+                "ref",
+            )
+            self.target_list = self._build_symbol_list(
+                self.target_symbol_groups,
+                self.target_symbol_names,
+                "target",
+            )
+
+            # target だけに適用する除外。ref 側には影響させない。
+            undefined_excludes = [
+                name for name in self.target_exclude_names
+                if name not in self.symbols
             ]
-            # 個別指定を後ろに足す（グループで既に入っているものは重複させない）
-            for name in self.symbol_names:
-                if name not in selected:
-                    selected.append(name)
-
-            if not selected:
+            if undefined_excludes:
                 raise ValueError(
-                    "symbol_pairs か symbol_groups か symbol_names で銘柄を指定してください。"
+                    "target_exclude_names に symbols 未定義の銘柄があります: "
+                    + ", ".join(undefined_excludes)
                 )
 
-            # symbols に定義がない銘柄は、コスト0として黙って計算されてしまうため、
-            # 起動時に気づけるようにする。
-            undefined = [name for name in selected if name not in self.symbols]
-            if undefined:
-                raise ValueError(
-                    "symbolsに定義がない銘柄があります: " + ", ".join(undefined)
-                )
-
-            # ref は選ばれた全銘柄、target は除外を引いたもの。
-            excluded = set(self.exclude_names)
-            self.ref_list = selected
-            self.target_list = [n for n in selected if n not in excluded]
+            excluded = set(self.target_exclude_names)
+            self.target_list = [
+                name for name in self.target_list
+                if name not in excluded
+            ]
             if not self.target_list:
-                raise ValueError("exclude_namesで全銘柄が除外されています。")
+                raise ValueError(
+                    "target_symbol_groups / target_symbol_names / "
+                    "target_exclude_names の指定により target が空です。"
+                )
+
         raw_signal_types = config_data.get("signal_type_list", [])
         try:
             self.signal_type_list: List[SignalType] = [
@@ -209,6 +227,60 @@ class BackTestConfig:
             if self.ranking_period[0] > self.ranking_period[1]:
                 raise ValueError("ranking_period は 開始年 <= 終了年 で指定してください。")
 
+    @staticmethod
+    def _validate_symbol_groups(
+        groups: List[str],
+        field_name: str,
+        defined_groups: set,
+    ) -> None:
+        unknown_groups = [
+            group for group in groups
+            if group not in defined_groups
+        ]
+        if unknown_groups:
+            raise ValueError(
+                f"{field_name} に symbols 未定義のグループがあります: "
+                + ", ".join(unknown_groups)
+                + "（定義済み: "
+                + ", ".join(sorted(defined_groups))
+                + "）"
+            )
+
+    def _build_symbol_list(
+        self,
+        groups: List[str],
+        names: List[str],
+        role_name: str,
+    ) -> List[str]:
+        """group と個別指定から、symbols の定義順を保って銘柄一覧を作る。"""
+        wanted_groups = set(groups)
+        selected: List[str] = [
+            name for name, value in self.symbols.items()
+            if isinstance(value, dict) and value.get("group") in wanted_groups
+        ]
+
+        undefined_names = [
+            name for name in names
+            if name not in self.symbols
+        ]
+        if undefined_names:
+            raise ValueError(
+                f"{role_name}_symbol_names に symbols 未定義の銘柄があります: "
+                + ", ".join(undefined_names)
+            )
+
+        for name in names:
+            if name not in selected:
+                selected.append(name)
+
+        if not selected:
+            raise ValueError(
+                f"{role_name}_symbol_groups か {role_name}_symbol_names で "
+                f"{role_name} 銘柄を指定してください。"
+            )
+
+        return selected
+
     def iter_ref_target(self):
         """(ref, target) を列挙する。
         symbol_pairs があればそのペアだけ、無ければ ref_list × target_list の総当たり。"""
@@ -256,3 +328,4 @@ class BackTestConfig:
     def center_of(self, signal_type: SignalType) -> float:
         """指標に対応する中心値を返す。未設定なら 0。"""
         return self.threshold_center.get(signal_type, 0.0)
+
