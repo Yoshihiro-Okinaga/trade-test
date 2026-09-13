@@ -221,6 +221,10 @@ def select_for_fold(combos, fold: WalkForwardFold, metric: SelectionMetric,
               その結果、良い候補が無い銘柄はその期間「見送り」となり張らない。
               0.0（既定）ならゲート無効で従来どおり全銘柄に張る。t値は選抜時点で
               分かる量なので、このゲートは未来情報を使わない（leak なし）。
+    select_per:
+        target : Targetごとに上位top_kを選ぶ。
+        pair   : (Target, Ref)ごとに上位top_kを選ぶ。
+        global : 全候補から上位top_kを選ぶ。
     戻り値: 各選抜について、学習期間の成績と検証(未知)期間の成績を持つ dict のリスト。
 
     注: 学習統計はすべて等重き（全トレードを同じ1票で扱う）。かつて試した年減衰
@@ -266,8 +270,21 @@ def select_for_fold(combos, fold: WalkForwardFold, metric: SelectionMetric,
             if bucket < top_k:
                 selected.append(row)
                 per_target[target] = bucket + 1
+    elif select_per == SelectionScope.PAIR:
+        per_pair = {}
+        selected = []
+        for row in scored:
+            combo = row[1]
+            pair = (combo["target"], combo["task"].ref_name)
+            bucket = per_pair.setdefault(pair, 0)
+            if bucket < top_k:
+                selected.append(row)
+                per_pair[pair] = bucket + 1
     else:
-        raise ValueError(f"select_per は 'target' か 'global'。指定値: {select_per!r}")
+        raise ValueError(
+            "select_per は 'target' / 'pair' / 'global' のいずれか。"
+            f"指定値: {select_per!r}"
+        )
 
     records = []
     for score, combo, is_n, is_s, is_ss in selected:
@@ -562,6 +579,7 @@ def build_and_write_equity(config, wf, records, save_dir):
 UNIFIED_COLUMNS = [
     "test_period", "target", "ref", "signal_type", "counter_trade",
     "use_excess_return", "threshold_width", "hold_days", "start_days", "sma_period",
+    "selection_metric", "selection_score",
     "is_trades", "is_mean_pct", "is_t", "is_years",
     "position", "signal_date", "entry_date", "exit_date", "profit_pct", "cumulative_pct",
 ]
@@ -593,6 +611,7 @@ def write_unified(curve, records, wf, save_dir):
                 row.get("signal_type", ""), row.get("counter_trade", ""),
                 row.get("use_excess_return", ""), row.get("threshold_width", ""),
                 row.get("hold_days", ""), row.get("start_days", ""), row.get("sma_period", ""),
+                wf.select_metric.value, num(row.get("selection_score"), ".9f"),
                 row.get("is_trades", ""), num(row.get("is_mean_pct"), ".9f"),
                 num(row.get("is_t"), ".9f"), row.get("is_years", ""),
                 row.get("position", ""), str(row.get("signal_date", ""))[:10],
@@ -615,6 +634,7 @@ def write_unified(curve, records, wf, save_dir):
                 task.counter_trade, task.use_excess_return,
                 task.threshold_width, task.hold_days,
                 task.start_days, task.sma_period,
+                wf.select_metric.value, num(r["selection_score"], ".9f"),
                 r["is_trades"], num(r["is_mean_pct"], ".9f"),
                 num(r["is_t"], ".9f"), r.get("is_years", ""),
                 "", "", "", "", "", "",
@@ -717,7 +737,17 @@ def run(
              if wf.max_open_positions > 0 else " / 最大建玉=無制限"))
 
     tasks = build_tasks(config)
+    print(
+        f"対象銘柄: ref {len(config.ref_list)} 件 / "
+        f"target {len(config.target_list)} 件"
+    )
     print(f"組み合わせ数: {len(tasks):,}")
+    if not tasks:
+        raise ValueError(
+            "Walk-forward のStrategyTaskが0件です。"
+            " signal_type_list / hold_days_list / start_days_list / "
+            "sma_period_list_sma / sma_period_list_not_sma を確認してください。"
+        )
 
     print("指標を事前計算しています...", flush=True)
     ref_cache, target_cache = market_data.build_caches(config, data_folder)
@@ -818,13 +848,28 @@ def run(
               "min_is_trades や min_is_t を緩めてください。")
         sys.exit(1)
 
-    # 品質ゲートで「張らなかった枠」がどれだけあるかを可視化（銘柄別選抜のとき）
+    # 品質ゲートで「張らなかった枠」がどれだけあるかを可視化する。
     if wf.select_per == SelectionScope.TARGET:
-        n_targets = len({combo["target"] for combo in combos})
-        max_slots = len(folds) * n_targets
+        n_groups = len({combo["target"] for combo in combos})
+        group_label = "Target"
+    elif wf.select_per == SelectionScope.PAIR:
+        n_groups = len({
+            (combo["target"], combo["task"].ref_name)
+            for combo in combos
+        })
+        group_label = "Pair"
+    else:
+        n_groups = 0
+        group_label = ""
+
+    if n_groups:
+        max_slots = len(folds) * n_groups * wf.select_top_k
         placed = len(all_records)
         skipped = max_slots - placed
-        print(f"張った枠: {placed} / {max_slots}（見送り {skipped}）")
+        print(
+            f"張った枠({group_label}): {placed} / {max_slots}"
+            f"（見送り {skipped}）"
+        )
 
     write_outputs(all_records, folds, wf)
     if wf.max_open_positions > 0:

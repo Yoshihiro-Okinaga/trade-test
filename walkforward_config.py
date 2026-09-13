@@ -20,6 +20,7 @@ class SelectionMetric(StrEnum):
 
 class SelectionScope(StrEnum):
     TARGET = "target"
+    PAIR = "pair"
     GLOBAL = "global"
 
 
